@@ -87,7 +87,6 @@ async function initWebR() {
 
 function createMainWindow() {
     mainWindow = new BrowserWindow({
-        title: i18n.t('app.title.main'),
         width: 1200,
         height: 860,
         minWidth: 1200,
@@ -134,7 +133,6 @@ function setupIPC() {
             const mainMenu = Menu.buildFromTemplate(buildMainMenuTemplate());
             Menu.setApplicationMenu(mainMenu);
             if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.setTitle(i18n.t('app.title.main'));
             }
             // Notify all renderer processes
             BrowserWindow.getAllWindows().forEach((win) => {
@@ -196,9 +194,6 @@ function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
         try { settings.set('language', lang); } catch { /* noop */ }
         const mainMenu = Menu.buildFromTemplate(buildMainMenuTemplate());
         Menu.setApplicationMenu(mainMenu);
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.setTitle(i18n.t('app.title.main'));
-        }
         BrowserWindow.getAllWindows().forEach((win) => {
             if (!win.isDestroyed()) {
             try { win.webContents.send('message-from-main-i18nLanguageChanged', lang); } catch {}
