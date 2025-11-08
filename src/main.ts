@@ -7,15 +7,39 @@ import * as fs from "fs";
 import { WebR } from "webr";
 import { ungzip } from "pako";
 import { i18n } from './i18n';
+import { utils } from './library/utils';
 import { settings } from './modules/settings';
 import { MountArgs } from './interfaces/main';
+import { getOrBuildDDITree, JsonValue } from './modules/dditree';
 
+app.setName('MetadataPublisher');
+let dditree: JsonValue | null = null;
 let mainWindow: BrowserWindow;
 const webR = new WebR({ interactive: false });
 
 const windowid: { [key: string]: number } = {
     mainWindow: 1,
 };
+
+
+
+async function loadXmlViaR(hostFilePath: string) {
+    const dir = path.dirname(hostFilePath);
+    const base = path.basename(hostFilePath);
+    // Mount the host directory so WebR can access the file
+    await mount({ what: dir, where: '/hostfile' });
+    const rPath = `/hostfile/${base}`;
+    mainWindow.webContents.send(
+        'consolog',
+        `codeBook <- getCodebook("${utils.escapeForR(rPath)}")`
+    );
+    await webR.evalRVoid(`codeBook <- getCodebook("${utils.escapeForR(rPath)}")`);
+    const getCodebookFromJSON = 'jsonlite::toJSON(' +
+        'DDIwR::normalizeRepeatedSiblings(codeBook), ' +
+        'auto_unbox = TRUE, null = "null", pretty = TRUE)';
+    const response = await webR.evalRString(getCodebookFromJSON);
+    mainWindow.webContents.send('consolog', JSON.parse(response));
+}
 
 
 async function mount(obj: MountArgs) {
@@ -50,15 +74,17 @@ async function initWebR() {
     try {
         await webR.init();
 
+        const appRDir = path.join(__dirname, '../src/library/R');
+
         // mount a virtual filesystem containing contributed R packages
         const buffer = Buffer.from(ungzip(fs.readFileSync(
-            path.join(__dirname, '../src/library/R/library.data.gz')
+            path.join(appRDir, 'library.data.gz')
         )));
         const data = new Blob([buffer]);
 
         const metadata = JSON.parse(
             fs.readFileSync(
-                path.join(__dirname, '../src/library/R/library.js.metadata'),
+                path.join(appRDir, 'library.js.metadata'),
                 'utf-8'
             )
         );
@@ -79,6 +105,24 @@ async function initWebR() {
 
         await webR.evalRVoid(`.libPaths(c(.libPaths(), "/my-library"))`);
         await webR.evalRVoid(`library(DDIwR)`);
+
+        // Source local R helper(s) after R initializes
+        try {
+            await mount({ what: appRDir, where: '/app' });
+            // const startTime = Date.now();
+            const tree = await getOrBuildDDITree(async () => {
+                const response = await webR.evalRString(
+                    'jsonlite::toJSON(makeDDITree(), auto_unbox = TRUE, null = "null", pretty = TRUE)'
+                );
+                return JSON.parse(response) as JsonValue;
+            });
+
+            // console.log(`Tree loaded in ${(Date.now() - startTime)/1000}s`);
+
+            dditree = tree;
+        } catch (e) {
+            // Non-fatal in case the source file is missing in some environments
+        }
     } catch (error) {
         throw error;
     }
@@ -161,10 +205,33 @@ function setupIPC() {
         win.webContents.send(`message-from-main-${channel}`, ...args);
         }
     });
+
+    // Provide fetch endpoint for late windows to retrieve current DDI tree
+    try {
+        ipcMain.handle('get-dditree', () => dditree);
+    } catch { /* noop: handler may already be registered in some hot-reload flows */ }
 }
 
 function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
     const fileSubmenu: MenuItemConstructorOptions[] = [
+        { // Load
+            label: i18n.t('menu.file.load'),
+            accelerator: 'CommandOrControl+L',
+            click: async () => {
+                const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+                    title: i18n.t('menu.file.loadtitle'),
+                    filters: [{ name: 'DDI XML file', extensions: ['xml'] }],
+                    properties: ['openFile']
+                });
+                if (canceled || !filePaths || filePaths.length === 0) return;
+                try {
+                    const filePath = filePaths[0];
+                    await loadXmlViaR(filePath);
+                } catch (e: any) {
+                    dialog.showErrorBox(i18n.t('messages.load.failed'), String((e && e.message) ? e.message : e));
+                }
+            }
+        },
         { role: 'quit', label: i18n.t('menu.quit') },
     ];
 

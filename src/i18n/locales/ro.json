@@ -1,5 +1,8 @@
 {
   "menu.file": "Fișier",
+  "menu.file.load": "Încărcare fișier XML DDI",
+  "menu.file.loadtitle": "Încărcare fișier XML DDI",
+
   "menu.edit": "Editare",
   "menu.edit.undo": "Anulare",
   "menu.edit.redo": "Refacere",
@@ -13,6 +16,8 @@
   "languageName.en": "Engleză",
   "languageName.fr": "Franceză",
   "languageName.ro": "Română",
+
+  "messages.load.failed": "Încărcare eșuată",
 
   "page.main.title": "Fereastra principală",
   "page.main.body": "Acesta este un punct de pornire minimal. Folosește meniul pentru alte opțiuni."

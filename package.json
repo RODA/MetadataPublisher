@@ -1,7 +1,7 @@
 {
-  "name": "template-repo",
+  "name": "metadata-publisher",
   "version": "1.0.0",
-  "description": "A template repository",
+  "description": "A metadata publishing tool",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",

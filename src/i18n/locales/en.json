@@ -1,5 +1,8 @@
 {
   "menu.file": "File",
+  "menu.file.load": "Load DDI XML File",
+  "menu.file.loadtitle": "Load DDI XML File",
+
   "menu.edit": "Edit",
   "menu.edit.undo": "Undo",
   "menu.edit.redo": "Redo",
@@ -13,6 +16,8 @@
   "languageName.en": "English",
   "languageName.fr": "French",
   "languageName.ro": "Romanian",
+
+  "messages.load.failed": "Load failed",
 
   "page.main.title": "Main Window",
   "page.main.body": "This is a minimal starting point. Use the menu for other options."

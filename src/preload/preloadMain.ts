@@ -61,13 +61,14 @@ function initSplitter() {
   const LS_KEY = 'mp-left-width';
   const root = document.documentElement;
   const content = document.querySelector('.content') as HTMLElement | null;
-  const splitter = document.getElementById('hsplitter') as HTMLElement | null;
+  const splitter = document.getElementById('splitter') as HTMLElement | null;
   if (!content || !splitter) return;
 
   const getCssVarPx = (name: string): number => {
     const v = getComputedStyle(root).getPropertyValue(name).trim();
     return parseFloat(v.replace('px', '')) || 0;
   };
+
   const setTreeWidth = (px: number) => {
     root.style.setProperty('--tree-width', `${px}px`);
   };

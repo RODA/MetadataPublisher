@@ -1,5 +1,8 @@
 {
   "menu.file": "Fichier",
+  "menu.file.load": "Charger un fichier DDI XML",
+  "menu.file.loadtitle": "Charger un fichier DDI XML",
+
   "menu.edit": "Édition",
   "menu.edit.undo": "Annuler",
   "menu.edit.redo": "Rétablir",
@@ -13,6 +16,8 @@
   "languageName.en": "Anglais",
   "languageName.fr": "Français",
   "languageName.ro": "Roumain",
+
+  "messages.load.failed": "Échec du chargement",
 
   "page.main.title": "Fenêtre principale",
   "page.main.body": "Ceci est un point de départ minimal. Utilisez le menu pour d'autres options."
