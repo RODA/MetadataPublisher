@@ -1,0 +1,21 @@
+{
+  "app.title.main": "Template App — Principal",
+
+  "menu.file": "Fichier",
+  "menu.edit": "Édition",
+  "menu.edit.undo": "Annuler",
+  "menu.edit.redo": "Rétablir",
+  "menu.edit.cut": "Couper",
+  "menu.edit.copy": "Copier",
+  "menu.edit.paste": "Coller",
+  "menu.edit.selectAll": "Tout sélectionner",
+  "menu.quit": "Quitter",
+
+  "menu.language": "Langue",
+  "languageName.en": "Anglais",
+  "languageName.fr": "Français",
+  "languageName.ro": "Roumain",
+
+  "page.main.title": "Fenêtre principale",
+  "page.main.body": "Ceci est un point de départ minimal. Utilisez le menu pour d'autres options."
+}

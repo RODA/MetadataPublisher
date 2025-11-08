@@ -12,7 +12,10 @@
   "menu.quit": "Ieșire",
 
   "menu.language": "Limbă",
+  "languageName.en": "Engleză",
+  "languageName.fr": "Franceză",
+  "languageName.ro": "Română",
 
   "page.main.title": "Fereastra principală",
-  "page.main.body": "Acesta este un punct de pornire minimal. Folosește meniul Fișier pentru altele."
+  "page.main.body": "Acesta este un punct de pornire minimal. Folosește meniul pentru alte opțiuni."
 }

@@ -12,7 +12,10 @@
   "menu.quit": "Quit",
 
   "menu.language": "Language",
+  "languageName.en": "English",
+  "languageName.fr": "French",
+  "languageName.ro": "Romanian",
 
   "page.main.title": "Main Window",
-  "page.main.body": "This is a minimal starting point. Use the File menu for other things."
+  "page.main.body": "This is a minimal starting point. Use the menu for other options."
 }

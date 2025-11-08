@@ -7,6 +7,7 @@ import * as fs from "fs";
 import { WebR } from "webr";
 import { ungzip } from "pako";
 import { i18n } from './i18n';
+import { settings } from './modules/settings';
 import { MountArgs } from './interfaces/main';
 
 let mainWindow: BrowserWindow;
@@ -105,6 +106,15 @@ function createMainWindow() {
     const mainMenu = Menu.buildFromTemplate(buildMainMenuTemplate());
     Menu.setApplicationMenu(mainMenu);
 
+    // Ensure renderer picks up current language on first load
+    try {
+        mainWindow.webContents.on('did-finish-load', () => {
+            try {
+                mainWindow.webContents.send('message-from-main-i18nLanguageChanged', i18n.getLocale());
+            } catch { /* noop */ }
+        });
+    } catch { /* noop */ }
+
     if (development) {
         mainWindow.webContents.openDevTools();
         setTimeout(() => mainWindow.focus(), 300);
@@ -119,6 +129,7 @@ function setupIPC() {
         if (channel === 'setLanguage') {
             const lang = (args[0] || 'en') as string;
             i18n.setLocale(lang);
+            try { settings.set('language', lang); } catch { /* noop */ }
             // Rebuild menus and update window titles
             const mainMenu = Menu.buildFromTemplate(buildMainMenuTemplate());
             Menu.setApplicationMenu(mainMenu);
@@ -178,10 +189,11 @@ function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
     // Language submenu (simple demo, lists available locales)
     const langs = i18n.availableLocales(__dirname);
     const langSubmenu: MenuItemConstructorOptions[] = langs.map((lang) => ({
-        label: `${lang}${lang === i18n.getLocale() ? ' ✓' : ''}`,
+        label: `${i18n.t('languageName.' + lang)}${lang === i18n.getLocale() ? ' ✓' : ''}`,
         type: 'normal',
         click: () => {
         i18n.setLocale(lang);
+        try { settings.set('language', lang); } catch { /* noop */ }
         const mainMenu = Menu.buildFromTemplate(buildMainMenuTemplate());
         Menu.setApplicationMenu(mainMenu);
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -199,11 +211,16 @@ function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
 }
 
 app.whenReady().then(() => {
-  // Initialize i18n with system locale (best-effort)
+  // Initialize i18n with saved language or system locale (best-effort)
     try {
         const sysLocale = app.getLocale ? app.getLocale() : 'en';
         const short = (sysLocale || 'en').slice(0, 2);
-        i18n.init(short, __dirname);
+        let lang = short;
+        try {
+            const saved = settings.get('language');
+            if (typeof saved === 'string' && saved) lang = saved;
+        } catch { /* noop */ }
+        i18n.init(lang, __dirname);
     } catch {
         i18n.init('en', __dirname);
     }
