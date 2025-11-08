@@ -269,16 +269,16 @@ export const utils: Utils = {
         return x.color !== '';
     },
 
-    isIdentifier: function(s) {
+    isIdentifier: function(text) {
         // Returns true if (and only if) the string is a valid, non-reserved simple JavaScript identifier
         // under a narrow ASCII rule set (letters, digits, _, $) that does NOT start with a digit.
         // Otherwise false.
 
-        if (typeof s !== 'string' || s.length === 0) {
+        if (typeof text !== 'string' || text.length === 0) {
             return false;
         }
 
-        if (!/^[A-Za-z_$][\w$]*$/.test(s)) {
+        if (!/^[A-Za-z_$][\w$]*$/.test(text)) {
             return false;
         }
 
@@ -289,7 +289,7 @@ export const utils: Utils = {
             'false','finally','for','function','if','import','in','instanceof','new','null','return','super','switch','this','throw','true','try','typeof','var','void','while','with','yield','let','static','implements','interface','package','private','protected','public','await','arguments','eval','of','from','as'
         ]);
 
-        if (RESERVED.has(s.toLowerCase())) {
+        if (RESERVED.has(text.toLowerCase())) {
             return false;
         }
 
@@ -354,5 +354,10 @@ export const utils: Utils = {
         // Final fallback approximation: average character width ≈ 0.6 * fontSize
         return Math.ceil(t.length * size * 0.6);
     },
+
+    escapeForR: function(text) {
+        // Normalize Windows paths and escape quotes for R
+        return text.replace(/\\/g, '/').replace(/"/g, '\\"');
+    }
 };
 
