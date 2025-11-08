@@ -109,66 +109,75 @@ body, body *, input, select, textarea, button {
     transform: translateY(1px);
 }
 
-/* === Color picker helpers (shared) === */
-/* The wrapper must occupy the entire grid cell and split into input + 18px swatch */
-#propertiesList .element-property .color-input-wrapper,
-.color-input-wrapper {
-    position: relative;
-    width: 100%;
-    min-width: 0;
-}
-/* Input occupies the cell minus the swatch width */
-.color-input-wrapper > input[type="text"],
-#propertiesList .element-property .color-input-wrapper > input {
-    width: calc(100% - 22px) !important; /* 18px swatch + 4px gap */
-    min-width: 0;
-    box-sizing: border-box;
-    display: inline-block;
-    vertical-align: middle;
-}
-.color-swatch-btn {
-    position: absolute;
-    right: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 18px;
-    height: 18px;
-    border: 0.5px solid #000000; /* thinner hairline on retina */
-    background: #000000;
-    padding: 0;
-    cursor: pointer;
-    display: block;
-}
-/* Prevent any focus ring on the swatch button */
-.color-swatch-btn:focus,
-.color-swatch-btn:focus-visible {
-    outline: none !important;
-    box-shadow: none !important;
-}
-.color-swatch-btn:focus {
-    outline: 1px solid dodgerblue;
-    outline-offset: 1px;
-}
-.color-popover {
-    background: #ffffff;
-    border: 1px solid #d9d9d9;
-    border-radius: 4px;
-    padding: 8px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+/* === Main window layout === */
+:root {
+    --toolbar-height: 44px;
+    --tree-width: 260px;
+    --splitter-width: 3px;
+    --tree-min-width: 200px;
+    --meta-min-width: 260px;
+    --panel-bg: #eeeeee;
+    --border-color: #c9c9c9;
 }
 
-/* Simple full-window cover overlay toggled by the cover module */
-#window-cover {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    pointer-events: none; /* disabled by default */
+html, body {
+    height: 100%;
+    margin: 0;
 }
-.window-cover {
-    background: rgba(0, 0, 0, 0.2);
-    backdrop-filter: blur(1px);
-    pointer-events: auto;
-    z-index: 9999;
+
+/* App grid: top toolbar + content area */
+.app {
+    display: grid;
+    grid-template-rows: var(--toolbar-height) 1fr;
+    height: 100vh;
+    min-height: 0; /* allow children to shrink for overflow */
+}
+
+.toolbar {
+    background: #efefef;
+    border-bottom: 1px solid var(--border-color);
+    height: var(--toolbar-height);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    gap: 8px;
+}
+
+/* Three-column content: tree | splitter | metadata area */
+.content {
+    display: grid;
+    grid-template-columns: var(--tree-width) var(--splitter-width, 6px) 1fr;
+    min-height: 0;
+}
+
+.tree-area {
+    background: #ffffff;
+    border-right: 1px solid var(--border-color);
+    padding: 8px;
+    overflow: auto;
+    min-width: var(--tree-min-width);
+}
+
+.splitter {
+    cursor: col-resize;
+    background: linear-gradient(to right, #d0d0d0, #bdbdbd, #d0d0d0);
+    box-shadow: inset 1px 0 0 #cfcfcf, inset -1px 0 0 #cfcfcf;
+}
+
+body.dragging, body.dragging * {
+    cursor: col-resize !important;
+    user-select: none;
+}
+
+.metadata-area {
+    background: #ffffff;
+    overflow: auto;
+}
+
+/* Optional visual separators inside metadata area */
+.metadata-area h1 {
+    margin: 12px;
+}
+.metadata-area p {
+    margin: 0 12px 12px 12px;
 }

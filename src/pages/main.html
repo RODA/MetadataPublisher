@@ -7,9 +7,16 @@
     <link rel="stylesheet" href="../css/global.css" />
   </head>
   <body>
-    <div>
-      <h1 data-i18n="page.main.title">Main Window</h1>
-      <p data-i18n="page.main.body">This is a minimal starting point. Use the File menu to open Preview.</p>
+    <div class="app">
+      <div class="toolbar" id="toolbar" role="toolbar" aria-label="App Toolbar"></div>
+      <div class="content">
+        <div class="tree-area"></div>
+        <div class="splitter" id="hsplitter" role="separator" aria-orientation="vertical" aria-label="Resize panels" tabindex="0"></div>
+        <div class="metadata-area">
+          <h1 data-i18n="page.main.title"></h1>
+          <p data-i18n="page.main.body"></p>
+        </div>
+      </div>
     </div>
     <div id="window-cover"></div>
   </body>
