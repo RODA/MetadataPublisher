@@ -1,0 +1,174 @@
+/* App font: Inter (embedded) */
+@font-face {
+    font-family: 'Inter';
+    src: url('../assets/fonts/Inter/Inter-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+    letter-spacing: -0.02em;
+}
+@font-face {
+    font-family: 'Inter';
+    src: url('../assets/fonts/Inter/Inter-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+    letter-spacing: -0.02em;
+}
+
+html, body {
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, 'Noto Sans', 'Liberation Sans', sans-serif;
+}
+
+/* Enforce Inter everywhere in the app (UI, forms, content) */
+body, body *, input, select, textarea, button {
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, 'Noto Sans', 'Liberation Sans', sans-serif !important;
+}
+.mt-2px {
+    margin-top: 2px;
+}
+
+.mt-0_5 {
+    margin-top: 0.5rem;
+}
+.mt-0_75 {
+    margin-top: 0.75rem;
+}
+.mt-1 {
+    margin-top: 1rem;
+}
+.mt-1_5 {
+    margin-top: 1.5rem;
+}
+.mt-2 {
+    margin-top: 2rem;
+}
+.mt-3 {
+    margin-top: 3rem;
+}
+.mt-4 {
+    margin-top: 4rem;
+}
+.mt-5 {
+    margin-top: 5rem;
+}
+.mb-2 {
+    margin-bottom: 2rem;
+}
+.ml-5px {
+    margin-left: 5px;
+}
+
+
+
+.hidden {
+    display: none;
+}
+
+.text-right {
+    text-align: right;
+}
+
+.text-left {
+    text-align: left;
+}
+
+.text-center {
+    text-align: center;
+}
+
+
+
+.custombutton:focus{
+    outline: none;
+}
+.custombutton{
+    margin-top: 0px;
+    width: 100px;
+    height: 25px;
+    cursor: pointer;
+    background-color: #f0f0f0;
+    border-top: 2px solid #eaeaea;
+    border-left:2px solid #eaeaea;
+    border-bottom: 2px solid #BBB;
+    border-right: 2px solid #BBB;
+    transition: transform 120ms ease, filter 120ms ease, background-color 120ms ease;
+}
+
+.custombutton:hover{
+    background-color: #f7f7f7;
+}
+.custombutton:active{
+    border-left:2px solid #BBB;
+    border-top: 2px solid #BBB;
+    border-right:2px solid #d6d6d6;
+    border-bottom: 2px solid #d6d6d6;
+}
+.custombutton.btn-active{
+    filter: brightness(0.95);
+    transform: translateY(1px);
+}
+
+/* === Color picker helpers (shared) === */
+/* The wrapper must occupy the entire grid cell and split into input + 18px swatch */
+#propertiesList .element-property .color-input-wrapper,
+.color-input-wrapper {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+}
+/* Input occupies the cell minus the swatch width */
+.color-input-wrapper > input[type="text"],
+#propertiesList .element-property .color-input-wrapper > input {
+    width: calc(100% - 22px) !important; /* 18px swatch + 4px gap */
+    min-width: 0;
+    box-sizing: border-box;
+    display: inline-block;
+    vertical-align: middle;
+}
+.color-swatch-btn {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    border: 0.5px solid #000000; /* thinner hairline on retina */
+    background: #000000;
+    padding: 0;
+    cursor: pointer;
+    display: block;
+}
+/* Prevent any focus ring on the swatch button */
+.color-swatch-btn:focus,
+.color-swatch-btn:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+}
+.color-swatch-btn:focus {
+    outline: 1px solid dodgerblue;
+    outline-offset: 1px;
+}
+.color-popover {
+    background: #ffffff;
+    border: 1px solid #d9d9d9;
+    border-radius: 4px;
+    padding: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+
+/* Simple full-window cover overlay toggled by the cover module */
+#window-cover {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none; /* disabled by default */
+}
+.window-cover {
+    background: rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(1px);
+    pointer-events: auto;
+    z-index: 9999;
+}

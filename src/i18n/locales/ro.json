@@ -1,0 +1,18 @@
+{
+  "app.title.main": "Aplicație șablon — Principală",
+
+  "menu.file": "Fișier",
+  "menu.edit": "Editare",
+  "menu.edit.undo": "Anulare",
+  "menu.edit.redo": "Refacere",
+  "menu.edit.cut": "Tăiere",
+  "menu.edit.copy": "Copiere",
+  "menu.edit.paste": "Lipire",
+  "menu.edit.selectAll": "Selectare tot",
+  "menu.quit": "Ieșire",
+
+  "menu.language": "Limbă",
+
+  "page.main.title": "Fereastra principală",
+  "page.main.body": "Acesta este un punct de pornire minimal. Folosește meniul Fișier pentru altele."
+}

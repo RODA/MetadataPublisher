@@ -1,0 +1,97 @@
+{
+  "name": "template-repo",
+  "version": "1.0.0",
+  "description": "A template repository",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "lint": "eslint -c .eslintrc --ext .ts ./src",
+    "start": "npm run build && cross-env NODE_ENV=development electron ./dist/main.js",
+    "i18n:check": "node scripts/i18n-check.js",
+    "predist": "cross-env NODE_ENV=production node scripts/check-env.js",
+    "dist": "node scripts/dist-dispatch.js",
+    "dist:publish": "npm run build && electron-builder --publish onTagOrDraft",
+    "rename:linux": "bash scripts/rename-binaries-linux.sh",
+    "rename:mac": "bash scripts/rename-binaries-mac.sh",
+    "rename:win": "powershell -ExecutionPolicy Bypass -File scripts/rename-binaries-windows.ps1"
+  },
+  "author": "Adrian Dusa",
+  "license": "SEE LICENSE IN LICENSE",
+  "bugs": {
+    "url": "https://github.com/GITUSER/MetadataPublisher/issues"
+  },
+  "repository": "https://github.com/GITUSER/MetadataPublisher.git",
+  "homepage": "https://github.com/GITUSER/MetadataPublisher#readme",
+  "keywords": [
+    "Electron",
+    "MetadataPublisher"
+  ],
+  "build": {
+    "appId": "MetadataPublisher.tool",
+    "productName": "MetadataPublisher",
+    "directories": {
+      "output": "build/output",
+      "buildResources": "icons"
+    },
+    "extraResources": [
+      "LICENSE",
+      { "from": "src/i18n/locales", "to": "i18n/locales", "filter": ["**/*"] }
+    ],
+    "win": {
+      "icon": "icons/icon.ico",
+      "legalTrademarks": "Academic Non-Commercial License (see LICENSE file for details).",
+      "publisherName": "RODA",
+      "target": {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    },
+    "mac": {
+      "icon": "icons/icon.icns",
+      "category": "public.app-category.productivity",
+      "extendInfo": {
+        "NSHumanReadableCopyright": "© 2025 Adrian Dusa — Academic Non-Commercial License (see LICENSE file for details)."
+      },
+      "target": {
+        "target": "dmg",
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      }
+    },
+    "dmg": {
+      "license": "LICENSE"
+    },
+    "publish": {
+      "provider": "GitHub",
+      "owner": "RODA",
+      "repo": "MetadataPublisher"
+    }
+  },
+  "devDependencies": {
+    "@types/emscripten": "^1.41.5",
+    "@types/uuid": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.3",
+    "@typescript-eslint/parser": "^8.46.3",
+    "@types/lodash": "^4.17.20",
+    "@types/pako": "^2.0.4",
+    "cross-env": "^10.1.0",
+    "electron": "^39.1.1",
+    "electron-builder": "^26.1.0",
+    "esbuild": "^0.25.12",
+    "eslint": "^9.39.1",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "lodash": "^4.17.21",
+    "pako": "^2.1.0",
+    "tippy.js": "^6.3.7",
+    "uuid": "^13.0.0",
+    "webr": "^0.5.6",
+    "ws": "^8.18.3"
+  }
+}

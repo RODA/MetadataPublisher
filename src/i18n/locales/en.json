@@ -1,0 +1,18 @@
+{
+  "app.title.main": "Template App — Main",
+
+  "menu.file": "File",
+  "menu.edit": "Edit",
+  "menu.edit.undo": "Undo",
+  "menu.edit.redo": "Redo",
+  "menu.edit.cut": "Cut",
+  "menu.edit.copy": "Copy",
+  "menu.edit.paste": "Paste",
+  "menu.edit.selectAll": "Select All",
+  "menu.quit": "Quit",
+
+  "menu.language": "Language",
+
+  "page.main.title": "Main Window",
+  "page.main.body": "This is a minimal starting point. Use the File menu for other things."
+}

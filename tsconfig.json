@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "skipLibCheck": true,
+    "lib": ["ES2022", "DOM"],
+    "target": "ES2022",
+    "module": "commonjs",
+    "strict": true,
+    "noImplicitAny": true,
+    "inlineSourceMap": true,
+    "outDir": "dist",
+    "types": [
+      "node",
+      "lodash",
+      "pako",
+      "uuid"
+    ]
+  },
+  "include": [
+    "src/**/*"
+  ]
+}
