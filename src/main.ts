@@ -24,21 +24,45 @@ const windowid: { [key: string]: number } = {
 
 
 async function loadXmlViaR(hostFilePath: string) {
+    // Send message to renderer to start loader
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('addCover', i18n.t('page.main.loader'));
+    }
+
     const dir = path.dirname(hostFilePath);
     const base = path.basename(hostFilePath);
+
     // Mount the host directory so WebR can access the file
     await mount({ what: dir, where: '/hostfile' });
+
     const rPath = `/hostfile/${base}`;
     mainWindow.webContents.send(
         'consolog',
         `codeBook <- getCodebook("${utils.escapeForR(rPath)}")`
     );
+
     await webR.evalRVoid(`codeBook <- getCodebook("${utils.escapeForR(rPath)}")`);
+
     const getCodebookFromJSON = 'jsonlite::toJSON(' +
-        'DDIwR::normalizeRepeatedSiblings(codeBook), ' +
+        'keep_attributes(codeBook), ' +
+        // 'codeBook, ' +
         'auto_unbox = TRUE, null = "null", pretty = TRUE)';
+
     const response = await webR.evalRString(getCodebookFromJSON);
-    mainWindow.webContents.send('consolog', JSON.parse(response));
+    dditree = JSON.parse(response) as JsonValue;
+
+    // Log to console panel, if any
+    mainWindow.webContents.send('consolog', dditree);
+
+    // Set as current tree and send to current window
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('dditree', dditree);
+    }
+
+    // Send message to renderer to clear loader
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('removeCover');
+    }
 }
 
 
@@ -109,6 +133,10 @@ async function initWebR() {
         // Source local R helper(s) after R initializes
         try {
             await mount({ what: appRDir, where: '/app' });
+            // Attempt to source local utils function for testing overrides
+            try {
+                await webR.evalRVoid('source("/app/utils.R")');
+            } catch { /* noop: sourcing errors should not break app */ }
             // const startTime = Date.now();
             const tree = await getOrBuildDDITree(async () => {
                 const response = await webR.evalRString(
@@ -169,40 +197,38 @@ function createMainWindow() {
 function setupIPC() {
     ipcMain.on('send-to', (_event, window, channel, ...args) => {
         if (window === 'main') {
-        if (channel === 'setLanguage') {
-            const lang = (args[0] || 'en') as string;
-            i18n.setLocale(lang);
-            try { settings.set('language', lang); } catch { /* noop */ }
-            // Rebuild menus and update window titles
-            const mainMenu = Menu.buildFromTemplate(buildMainMenuTemplate());
-            Menu.setApplicationMenu(mainMenu);
-            if (mainWindow && !mainWindow.isDestroyed()) {
+            if (channel === 'setLanguage') {
+                const lang = (args[0] || 'en') as string;
+                i18n.setLocale(lang);
+
+                try { settings.set('language', lang); } catch { /* noop */ }
+
+                // Rebuild menus and update window titles
+                const mainMenu = Menu.buildFromTemplate(buildMainMenuTemplate());
+                Menu.setApplicationMenu(mainMenu);
+
+                // Notify all renderer processes
+                BrowserWindow.getAllWindows().forEach((win) => {
+                    if (!win.isDestroyed()) {
+                        win.webContents.send('i18nLanguageChanged', lang);
+                    }
+                });
+                return;
             }
-            // Notify all renderer processes
-            BrowserWindow.getAllWindows().forEach((win) => {
-            if (!win.isDestroyed()) {
-                win.webContents.send(
-                'message-from-main-i18nLanguageChanged',
-                lang
-                );
-            }
-            });
+
             return;
-        }
-        // Add other main-handled channels here as needed
-        return;
         }
 
         if (window === 'all') {
-        BrowserWindow.getAllWindows().forEach((win) => {
-            win.webContents.send(`message-from-main-${channel}`, ...args);
-        });
-        return;
+            BrowserWindow.getAllWindows().forEach((win) => {
+                win.webContents.send(`message-from-main-${channel}`, ...args);
+            });
+            return;
         }
 
         const win = BrowserWindow.fromId(windowid[window]);
         if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
-        win.webContents.send(`message-from-main-${channel}`, ...args);
+            win.webContents.send(`message-from-main-${channel}`, ...args);
         }
     });
 
@@ -228,7 +254,10 @@ function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
                     const filePath = filePaths[0];
                     await loadXmlViaR(filePath);
                 } catch (e: any) {
-                    dialog.showErrorBox(i18n.t('messages.load.failed'), String((e && e.message) ? e.message : e));
+                    dialog.showErrorBox(
+                        i18n.t('messages.load.failed'),
+                        String((e && e.message) ? e.message : e)
+                    );
                 }
             }
         },
@@ -251,23 +280,28 @@ function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
     const template: MenuItemConstructorOptions[] = [];
     template.push({ label: i18n.t('menu.file'), submenu: fileSubmenu });
     template.push(editMenu);
+
     // Language submenu (simple demo, lists available locales)
     const langs = i18n.availableLocales(__dirname);
+
     const langSubmenu: MenuItemConstructorOptions[] = langs.map((lang) => ({
         label: `${i18n.t('languageName.' + lang)}${lang === i18n.getLocale() ? ' ✓' : ''}`,
         type: 'normal',
         click: () => {
-        i18n.setLocale(lang);
-        try { settings.set('language', lang); } catch { /* noop */ }
-        const mainMenu = Menu.buildFromTemplate(buildMainMenuTemplate());
-        Menu.setApplicationMenu(mainMenu);
-        BrowserWindow.getAllWindows().forEach((win) => {
-            if (!win.isDestroyed()) {
-            try { win.webContents.send('message-from-main-i18nLanguageChanged', lang); } catch {}
-            }
-        });
+            i18n.setLocale(lang);
+            try { settings.set('language', lang); } catch { /* noop */ }
+
+            const mainMenu = Menu.buildFromTemplate(buildMainMenuTemplate());
+            Menu.setApplicationMenu(mainMenu);
+
+            BrowserWindow.getAllWindows().forEach((win) => {
+                if (!win.isDestroyed()) {
+                    try { win.webContents.send('i18nLanguageChanged', lang); } catch {}
+                }
+            });
         },
     }));
+
     template.push({ label: i18n.t('menu.language'), submenu: langSubmenu });
     return template;
 }
@@ -280,14 +314,20 @@ app.whenReady().then(() => {
         let lang = short;
         try {
             const saved = settings.get('language');
-            if (typeof saved === 'string' && saved) lang = saved;
+            if (typeof saved === 'string' && saved) {
+                lang = saved;
+            }
         } catch { /* noop */ }
+
         i18n.init(lang, __dirname);
+
     } catch {
         i18n.init('en', __dirname);
     }
+
     createMainWindow();
     setupIPC();
+
     initWebR().catch((error) => {
         const errorMessage = error instanceof Error ? error.message : String(error);
         dialog.showErrorBox("Failed to initialize WebR", errorMessage);

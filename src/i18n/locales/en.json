@@ -20,5 +20,6 @@
   "messages.load.failed": "Load failed",
 
   "page.main.title": "Main Window",
-  "page.main.body": "This is a minimal starting point. Use the menu for other options."
+  "page.main.body": "This is a minimal starting point. Use the menu for other options.",
+  "page.main.loader": "Loading..."
 }

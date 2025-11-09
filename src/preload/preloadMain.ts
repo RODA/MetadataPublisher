@@ -1,13 +1,13 @@
 // Minimal preload for the Main window: wire cover overlay listeners
 import { coms } from '../modules/coms';
 import { cover } from '../modules/cover';
-import { contextBridge } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
 import { i18n } from '../i18n';
 import * as path from 'path';
 
-coms.on('addCover', () => {
+coms.on('addCover', (text: unknown) => {
   try {
-    cover.addCover();
+    cover.addCover(typeof text === 'string' ? text : undefined);
   } catch { /* noop */ }
 });
 
@@ -49,10 +49,12 @@ try {
     document.addEventListener('DOMContentLoaded', () => {
       i18n.translateDocument(document, path.resolve(__dirname));
       try { initSplitter(); } catch { /* noop */ }
+      try { initTree(); } catch { /* noop */ }
     });
   } else {
     i18n.translateDocument(document, path.resolve(__dirname));
     try { initSplitter(); } catch { /* noop */ }
+    try { initTree(); } catch { /* noop */ }
   }
 } catch { /* noop */ }
 
@@ -142,4 +144,201 @@ function initSplitter() {
     setTreeWidth(defaultLeft);
     try { localStorage.setItem(LS_KEY, String(defaultLeft)); } catch { /* noop */ }
   });
+}
+
+// --- ARIA Tree renderer (minimal) ---
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonValue[] | { [k: string]: JsonValue };
+
+type TreeNode = {
+  id: string;
+  label: string;
+  children?: TreeNode[];
+};
+
+function jsonToTree(value: JsonValue, idPrefix = 'root', keyLabel = 'root'): TreeNode {
+  // Arrays represent unnamed children -> treat as values: don't render items as tree nodes
+  if (Array.isArray(value)) {
+    return { id: idPrefix, label: keyLabel };
+  }
+  if (value !== null && typeof value === 'object') {
+    // Object: hide `.extra`, avoid grouping wrappers, display repeated siblings individually
+    const obj = value as { [k: string]: JsonValue };
+    const label = keyLabel;
+    const entries = Object.entries(obj).filter(([k]) => k !== '.extra' && k !== '.attributes');
+
+    // If keys are numeric-only, treat as unnamed values -> collapse to leaf
+    const numericKeyed = entries.length > 0 && entries.every(([k]) => /^\d+$/.test(k));
+    if (numericKeyed) {
+      // Treat as values: do not show actual values in the tree
+      return { id: idPrefix, label };
+    }
+
+    const stripSuffix = (k: string) => k.replace(/\.\d+$/u, '');
+    const children: TreeNode[] = entries.map(([k, v]) => {
+      const base = stripSuffix(k);
+      // Child nodes keep the element name (base) as label; no grouping wrapper
+      return jsonToTree(v, `${idPrefix}.${k}`, base);
+    });
+    return { id: idPrefix, label, children };
+  }
+  // Primitive leaf -> values are not displayed in the tree
+  return { id: idPrefix, label: keyLabel };
+}
+
+function initTree() {
+  const container = document.querySelector('.tree-area') as HTMLElement | null;
+  if (!container) return;
+
+  const render = (rootJson: unknown) => {
+    if (!rootJson) return;
+    const treeData = jsonToTree(rootJson as JsonValue);
+    mountAriaTree(container, treeData);
+  };
+
+  // 1) Try immediate fetch
+  ipcRenderer.invoke('get-dditree').then((tree) => {
+    if (tree) render(tree);
+  }).catch(() => {});
+
+  // 2) Also listen for a later broadcast
+  coms.on('dditree', (tree: unknown) => render(tree));
+}
+
+function mountAriaTree(container: HTMLElement, data: TreeNode) {
+  container.innerHTML = '';
+  const expanded = new Set<string>([data.id]);
+  let focusedId: string | null = data.id;
+  let selectedId: string | null = null;
+  let firstRender = true;
+
+  const root = document.createElement('ul');
+  root.className = 'tree';
+  root.setAttribute('role', 'tree');
+  container.appendChild(root);
+
+  const renderNode = (node: TreeNode): HTMLElement => {
+    const li = document.createElement('li');
+    li.className = 'tree__item';
+    li.setAttribute('role', 'treeitem');
+    li.id = `tree-${node.id}`;
+    const hasChildren = !!(node.children && node.children.length);
+    if (hasChildren) {
+      li.setAttribute('aria-expanded', expanded.has(node.id) ? 'true' : 'false');
+    }
+
+    // Roving tabindex
+    li.tabIndex = (focusedId === node.id) ? 0 : -1;
+    if (selectedId === node.id) li.classList.add('is-selected');
+
+    const row = document.createElement('div');
+    row.className = 'tree__row';
+    const disclosure = document.createElement('span');
+    disclosure.className = 'tree__disclosure' + (hasChildren ? '' : ' is-leaf');
+    const label = document.createElement('span');
+    label.className = 'tree__label';
+    label.textContent = node.label;
+    row.appendChild(disclosure);
+    row.appendChild(label);
+    li.appendChild(row);
+
+    // Mouse interactions
+    row.addEventListener('click', (e) => {
+      e.stopPropagation();
+      focusedId = node.id;
+      selectedId = node.id;
+      if (hasChildren) toggle(node.id);
+      rerender();
+    });
+
+    // Keyboard interactions
+    li.addEventListener('keydown', (e) => {
+      const visible = visibleNodes();
+      const idx = visible.findIndex(n => n.id === node.id);
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const next = visible[idx + 1];
+        if (next) { focusedId = next.id; focusRow(next.id); }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prev = visible[idx - 1];
+        if (prev) { focusedId = prev.id; focusRow(prev.id); }
+      } else if (e.key === 'ArrowRight') {
+        if (hasChildren) {
+          if (!expanded.has(node.id)) { toggle(node.id); rerender(); }
+          else { // move to first child
+            const first = node.children![0];
+            focusedId = first.id; rerender();
+          }
+        }
+      } else if (e.key === 'ArrowLeft') {
+        if (hasChildren && expanded.has(node.id)) { toggle(node.id); rerender(); }
+        else { // move to parent
+          const parentId = parentOf(node.id);
+          if (parentId) { focusedId = parentId; rerender(); }
+        }
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        const first = visible[0];
+        if (first) { focusedId = first.id; rerender(); }
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        const last = visible[visible.length - 1];
+        if (last) { focusedId = last.id; rerender(); }
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        selectedId = node.id;
+        if (hasChildren) toggle(node.id);
+        rerender();
+      }
+    });
+
+    if (hasChildren && expanded.has(node.id)) {
+      const group = document.createElement('ul');
+      group.className = 'tree__group';
+      group.setAttribute('role', 'group');
+      for (const child of node.children!) group.appendChild(renderNode(child));
+      li.appendChild(group);
+    }
+    return li;
+  };
+
+  const parentOf = (id: string): string | null => {
+    const idx = id.lastIndexOf('.');
+    return idx > 0 ? id.slice(0, idx) : null;
+  };
+
+  const toggle = (id: string) => {
+    if (expanded.has(id)) expanded.delete(id); else expanded.add(id);
+  };
+
+  const visibleNodes = (): TreeNode[] => {
+    const out: TreeNode[] = [];
+    const walk = (n: TreeNode) => {
+      out.push(n);
+      if (n.children && expanded.has(n.id)) n.children.forEach(walk);
+    };
+    walk(data);
+    return out;
+  };
+
+  const focusRow = (id: string) => {
+    const el = container.querySelector(`#tree-${CSS.escape(id)}`) as HTMLElement | null;
+    if (!el) return;
+    el.focus();
+  };
+
+  const rerender = () => {
+    root.innerHTML = '';
+    root.appendChild(renderNode(data));
+    // Avoid initial focus ring, but keep focus on subsequent rerenders
+    if (!firstRender) {
+      // Restore focus to the newly rendered focused node
+      setTimeout(() => focusRow(focusedId || data.id), 0);
+    }
+    firstRender = false;
+  };
+
+  rerender();
+
 }

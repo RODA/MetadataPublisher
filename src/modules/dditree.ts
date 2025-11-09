@@ -14,9 +14,11 @@ type Meta = {
 function cacheDir() {
     return path.join(app.getPath('userData'), 'ddiTreeCache', 'v1');
 }
+
 function treePath() {
     return path.join(cacheDir(), 'tree.json');
 }
+
 function metaPath() {
     return path.join(cacheDir(), 'meta.json');
 }

@@ -20,5 +20,6 @@
   "messages.load.failed": "Încărcare eșuată",
 
   "page.main.title": "Fereastra principală",
-  "page.main.body": "Acesta este un punct de pornire minimal. Folosește meniul pentru alte opțiuni."
+  "page.main.body": "Acesta este un punct de pornire minimal. Folosește meniul pentru alte opțiuni.",
+  "page.main.loader": "Se încarcă..."
 }

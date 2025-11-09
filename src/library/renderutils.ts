@@ -1,7 +1,7 @@
 // import { utils } from '../library/utils';
 import type { RenderUtils } from '../interfaces/renderutils';
 import { inputfilters } from './inputfilters';
-import { tooltip } from './errortooltip';
+import { tooltip } from './tooltip';
 
 export const renderutils: RenderUtils = {
   setInputFilter(textbox, inputFilter) {

@@ -86,5 +86,3 @@ export const inputfilters: InputFilters = {
     });
   },
 };
-
-export default inputfilters;

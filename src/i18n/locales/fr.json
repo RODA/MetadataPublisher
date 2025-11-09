@@ -20,5 +20,6 @@
   "messages.load.failed": "Échec du chargement",
 
   "page.main.title": "Fenêtre principale",
-  "page.main.body": "Ceci est un point de départ minimal. Utilisez le menu pour d'autres options."
+  "page.main.body": "Ceci est un point de départ minimal. Utilisez le menu pour d'autres options.",
+  "page.main.loader": "Chargement..."
 }

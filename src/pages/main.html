@@ -5,8 +5,90 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'" />
     <title>MetadataPublisher</title>
     <link rel="stylesheet" href="../css/global.css" />
+    <link rel="stylesheet" href="../css/margins.css" />
+    <link rel="stylesheet" href="../css/tree.css" />
+    <style>
+      /* Page-specific styles */
+
+      /* App grid: top toolbar + content area */
+      .app {
+          display: grid;
+          grid-template-rows: var(--toolbar-height, 40px) 1fr;
+          height: 100vh;
+          min-height: 0; /* allow children to shrink for overflow */
+      }
+
+      /* Three-column content: tree area | splitter | metadata area */
+      .content {
+          display: grid;
+          grid-template-columns: var(--tree-width, 250px) var(--splitter-width, 2px) 1fr;
+          min-height: 0;
+      }
+
+      .toolbar {
+          background: #efefef;
+          border-bottom: 1px solid var(--border-color, #c9c9c9);
+          height: var(--toolbar-height);
+          display: flex;
+          align-items: center;
+          padding: 0 8px;
+          gap: 8px;
+      }
+
+      .tree-area {
+          background: #ffffff;
+          border-right: 1px solid var(--border-color, #c9c9c9);
+          padding: 8px;
+          overflow: auto;
+          min-width: var(--tree-min-width, 200px);
+      }
+
+      .splitter {
+          cursor: col-resize;
+          background: linear-gradient(to right, #d0d0d0, #bdbdbd, #d0d0d0);
+          box-shadow: inset 1px 0 0 #cfcfcf, inset -1px 0 0 #cfcfcf;
+      }
+
+      .metadata-area {
+          background: #ffffff;
+          overflow: auto;
+      }
+
+      /* Optional visual separators inside metadata area */
+      .metadata-area h1 {
+          margin: 12px;
+      }
+
+      .metadata-area p {
+          margin: 0 12px 12px 12px;
+      }
+
+			.loader {
+				font-size: 2rem;
+				font-weight: 500;
+				color: #ffffff;
+				position: fixed;
+				z-index: 1050;
+				left: calc(50% - 50px);
+				top: calc(50% - 10px);
+				text-align: center;
+			}
+
+			.cover {
+				top: 0;
+				display: block;
+				position: fixed;
+				width: 100%;
+				height: 100%;
+				background-color: rgba(0, 0, 0, 0.7);
+				z-index: 1040;
+			}
+
+    </style>
   </head>
   <body>
+    <div class="loader hidden" id="loader"></div>
+    <div class="cover hidden" id="cover"></div>
     <div class="app">
       <div class="toolbar" id="toolbar" role="toolbar" aria-label="App Toolbar"></div>
       <div class="content">
@@ -18,6 +100,5 @@
         </div>
       </div>
     </div>
-    <div id="window-cover"></div>
   </body>
   </html>
