@@ -14,6 +14,7 @@ import { getOrBuildDDITree, JsonValue } from './modules/dditree';
 
 app.setName('MetadataPublisher');
 let dditree: JsonValue | null = null;
+let ddiElements: any | null = null; // elements map from cached tree.json
 let mainWindow: BrowserWindow;
 const webR = new WebR({ interactive: false });
 
@@ -46,10 +47,12 @@ async function loadXmlViaR(hostFilePath: string) {
     const getCodebookFromJSON = 'jsonlite::toJSON(' +
         'keep_attributes(codeBook), ' +
         // 'codeBook, ' +
-        'auto_unbox = TRUE, null = "null", pretty = TRUE)';
+        'auto_unbox = TRUE, null = "null")';
 
     const response = await webR.evalRString(getCodebookFromJSON);
-    dditree = JSON.parse(response) as JsonValue;
+    const codeBookOnly = JSON.parse(response) as JsonValue;
+    // Combine freshly loaded codebook with cached elements map so renderer can label nodes
+    dditree = { codeBook: codeBookOnly, elements: ddiElements } as unknown as JsonValue;
 
     // Log to console panel, if any
     mainWindow.webContents.send('consolog', dditree);
@@ -148,6 +151,11 @@ async function initWebR() {
             // console.log(`Tree loaded in ${(Date.now() - startTime)/1000}s`);
 
             dditree = tree;
+            try {
+                // Keep only the elements map handy for later merges
+                const anyTree: any = tree as any;
+                ddiElements = anyTree && typeof anyTree === 'object' ? anyTree.elements || null : null;
+            } catch { ddiElements = null; }
         } catch (e) {
             // Non-fatal in case the source file is missing in some environments
         }
@@ -235,6 +243,12 @@ function setupIPC() {
     // Provide fetch endpoint for late windows to retrieve current DDI tree
     try {
         ipcMain.handle('get-dditree', () => dditree);
+        // Settings fetchers
+        ipcMain.handle('get-tree-label-mode', () => {
+            const v = settings.get('treeLabelMode');
+            const mode = (v === 'name' || v === 'title' || v === 'both') ? (v as string) : 'both';
+            return mode;
+        });
     } catch { /* noop: handler may already be registered in some hot-reload flows */ }
 }
 
@@ -303,6 +317,33 @@ function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
     }));
 
     template.push({ label: i18n.t('menu.language'), submenu: langSubmenu });
+
+    // Settings menu: Tree label mode
+    const currentLabelMode = (() => {
+        const v = settings.get('treeLabelMode');
+        return (v === 'name' || v === 'title' || v === 'both') ? (v as string) : 'both';
+    })();
+    const setMode = (mode: 'name' | 'title' | 'both') => {
+        try { settings.set('treeLabelMode', mode); } catch { /* noop */ }
+        // Notify all renderers
+        BrowserWindow.getAllWindows().forEach((win) => {
+            if (!win.isDestroyed()) {
+                try { win.webContents.send('treeLabelModeChanged', mode); } catch {}
+            }
+        });
+        // Rebuild menus to update radio checkmarks
+        const mainMenu = Menu.buildFromTemplate(buildMainMenuTemplate());
+        Menu.setApplicationMenu(mainMenu);
+    };
+    const treeLabelsSubmenu: MenuItemConstructorOptions[] = [
+        { label: 'Name', type: 'radio', checked: currentLabelMode === 'name', click: () => setMode('name') },
+        { label: 'Title', type: 'radio', checked: currentLabelMode === 'title', click: () => setMode('title') },
+        { label: 'Name: Title', type: 'radio', checked: currentLabelMode === 'both', click: () => setMode('both') },
+    ];
+    const settingsSubmenu: MenuItemConstructorOptions[] = [
+        { label: 'Tree labels', submenu: treeLabelsSubmenu },
+    ];
+    template.push({ label: 'Settings', submenu: settingsSubmenu });
     return template;
 }
 
@@ -332,6 +373,12 @@ app.whenReady().then(() => {
         const errorMessage = error instanceof Error ? error.message : String(error);
         dialog.showErrorBox("Failed to initialize WebR", errorMessage);
     });
+
+    // Ensure a default label mode exists
+    try {
+        const v = settings.get('treeLabelMode');
+        if (v !== 'name' && v !== 'title' && v !== 'both') settings.set('treeLabelMode', 'both');
+    } catch { /* noop */ }
 });
 
 app.on('window-all-closed', () => {

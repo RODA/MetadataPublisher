@@ -156,15 +156,40 @@ type TreeNode = {
   children?: TreeNode[];
 };
 
-function jsonToTree(value: JsonValue, idPrefix = 'root', keyLabel = 'root'): TreeNode {
+type ElementsIndex = { [k: string]: string } | undefined;
+type LabelMode = 'name' | 'title' | 'both';
+
+function normalizeName(name: string): string {
+  const noNs = name.includes(':') ? (name.split(':').pop() || name) : name;
+  return noNs.replace(/\.\d+$/u, '');
+}
+
+function jsonToTree(
+  value: JsonValue,
+  elements: ElementsIndex,
+  mode: LabelMode,
+  idPrefix = 'root',
+  keyLabel = 'root',
+): TreeNode {
+  const lookupTitle = (name: string): string | undefined => {
+    const norm = normalizeName(name);
+    return elements?.[norm];
+  };
+
+  const compose = (name: string): string => {
+    const title = lookupTitle(name);
+    if (mode === 'name') return name;
+    if (mode === 'title') return title || name;
+    return title ? `${name}: ${title}` : name;
+  };
   // Arrays represent unnamed children -> treat as values: don't render items as tree nodes
   if (Array.isArray(value)) {
-    return { id: idPrefix, label: keyLabel };
+    return { id: idPrefix, label: compose(keyLabel) };
   }
   if (value !== null && typeof value === 'object') {
     // Object: hide `.extra`, avoid grouping wrappers, display repeated siblings individually
     const obj = value as { [k: string]: JsonValue };
-    const label = keyLabel;
+    const label = compose(keyLabel);
     const entries = Object.entries(obj).filter(([k]) => k !== '.extra' && k !== '.attributes');
 
     // If keys are numeric-only, treat as unnamed values -> collapse to leaf
@@ -178,23 +203,59 @@ function jsonToTree(value: JsonValue, idPrefix = 'root', keyLabel = 'root'): Tre
     const children: TreeNode[] = entries.map(([k, v]) => {
       const base = stripSuffix(k);
       // Child nodes keep the element name (base) as label; no grouping wrapper
-      return jsonToTree(v, `${idPrefix}.${k}`, base);
+      return jsonToTree(v, elements, mode, `${idPrefix}.${k}`, base);
     });
     return { id: idPrefix, label, children };
   }
   // Primitive leaf -> values are not displayed in the tree
-  return { id: idPrefix, label: keyLabel };
+  return { id: idPrefix, label: compose(keyLabel) };
 }
 
 function initTree() {
   const container = document.querySelector('.tree-area') as HTMLElement | null;
   if (!container) return;
 
+  const state = {
+    mode: 'both' as LabelMode,
+    elements: undefined as ElementsIndex,
+    lastPayload: null as JsonValue | null,
+  };
+
   const render = (rootJson: unknown) => {
     if (!rootJson) return;
-    const treeData = jsonToTree(rootJson as JsonValue);
+    state.lastPayload = rootJson as JsonValue;
+    let treeRoot: JsonValue = state.lastPayload;
+    let rootLabel = 'root';
+    // Expect composite payload: { codeBook, elements }
+    if (state.lastPayload && typeof state.lastPayload === 'object' && !Array.isArray(state.lastPayload)) {
+      const obj = state.lastPayload as any;
+      const code = obj.codeBook || obj.Codebook || null;
+      if (code) {
+        treeRoot = code as JsonValue;
+        rootLabel = 'codeBook';
+        if (obj.elements && typeof obj.elements === 'object') {
+          // Build a simple string index from incoming elements map
+          const idx: { [k: string]: string } = {};
+          for (const [k, v] of Object.entries(obj.elements as Record<string, unknown>)) {
+            if (typeof v === 'string') idx[normalizeName(k)] = v as string;
+            else if (v && typeof v === 'object') {
+              const t = (v as any).title || (v as any).Title || (v as any).label || (v as any).Label;
+              if (typeof t === 'string') idx[normalizeName(k)] = t as string;
+            }
+          }
+          state.elements = idx;
+        }
+      }
+    }
+    const treeData = jsonToTree(treeRoot, state.elements, state.mode, 'root', rootLabel);
     mountAriaTree(container, treeData);
   };
+
+  // 1) Try immediate fetch
+  // Fetch initial label mode from main
+  ipcRenderer.invoke('get-tree-label-mode').then((mode) => {
+    if (mode === 'name' || mode === 'title' || mode === 'both') state.mode = mode;
+  }).catch(() => {});
 
   // 1) Try immediate fetch
   ipcRenderer.invoke('get-dditree').then((tree) => {
@@ -203,6 +264,15 @@ function initTree() {
 
   // 2) Also listen for a later broadcast
   coms.on('dditree', (tree: unknown) => render(tree));
+
+  // React to Tree Label Mode changes from Settings menu
+  coms.on('treeLabelModeChanged', (mode: unknown) => {
+    const m = String(mode);
+    if (m === 'name' || m === 'title' || m === 'both') {
+      state.mode = m;
+      if (state.lastPayload) render(state.lastPayload);
+    }
+  });
 }
 
 function mountAriaTree(container: HTMLElement, data: TreeNode) {
