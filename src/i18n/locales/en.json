@@ -17,6 +17,13 @@
   "languageName.fr": "French",
   "languageName.ro": "Romanian",
 
+  "menu.settings": "Settings",
+  "tree.labels": "Tree labels",
+  "tree.names": "Names",
+  "tree.titles": "Titles",
+  "tree.nametitles": "Names and titles",
+
+
   "messages.load.failed": "Load failed",
 
   "page.main.title": "Main Window",

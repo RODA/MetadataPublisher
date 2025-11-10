@@ -336,14 +336,14 @@ function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
         Menu.setApplicationMenu(mainMenu);
     };
     const treeLabelsSubmenu: MenuItemConstructorOptions[] = [
-        { label: 'Name', type: 'radio', checked: currentLabelMode === 'name', click: () => setMode('name') },
-        { label: 'Title', type: 'radio', checked: currentLabelMode === 'title', click: () => setMode('title') },
-        { label: 'Name: Title', type: 'radio', checked: currentLabelMode === 'both', click: () => setMode('both') },
+        { label: i18n.t('tree.names'), type: 'radio', checked: currentLabelMode === 'name', click: () => setMode('name') },
+        { label: i18n.t('tree.titles'), type: 'radio', checked: currentLabelMode === 'title', click: () => setMode('title') },
+        { label: i18n.t('tree.nametitles'), type: 'radio', checked: currentLabelMode === 'both', click: () => setMode('both') },
     ];
     const settingsSubmenu: MenuItemConstructorOptions[] = [
-        { label: 'Tree labels', submenu: treeLabelsSubmenu },
+        { label: i18n.t('tree.labels'), submenu: treeLabelsSubmenu },
     ];
-    template.push({ label: 'Settings', submenu: settingsSubmenu });
+    template.push({ label: i18n.t('menu.settings'), submenu: settingsSubmenu });
     return template;
 }
 

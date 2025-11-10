@@ -17,6 +17,12 @@
   "languageName.fr": "Franceză",
   "languageName.ro": "Română",
 
+  "menu.settings": "Setări",
+  "tree.labels": "Etichete arbore",
+  "tree.names": "Nume",
+  "tree.titles": "Titluri",
+  "tree.nametitles": "Nume și titluri",
+
   "messages.load.failed": "Încărcare eșuată",
 
   "page.main.title": "Fereastra principală",

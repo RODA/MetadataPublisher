@@ -17,6 +17,12 @@
   "languageName.fr": "Français",
   "languageName.ro": "Roumain",
 
+  "menu.settings": "Paramètres",
+  "tree.labels": "Étiquettes de l'arborescence",
+  "tree.names": "Noms",
+  "tree.titles": "Titres",
+  "tree.nametitles": "Noms et titres",
+
   "messages.load.failed": "Échec du chargement",
 
   "page.main.title": "Fenêtre principale",
