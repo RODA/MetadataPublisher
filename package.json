@@ -7,7 +7,7 @@
     "build": "tsc",
     "watch": "tsc -w",
     "lint": "eslint -c .eslintrc --ext .ts ./src",
-    "start": "npm run build && cross-env NODE_ENV=development electron ./dist/main.js",
+    "start": "npm run build && cross-env NODE_ENV=development electron .",
     "i18n:check": "node scripts/i18n-check.js",
     "predist": "cross-env NODE_ENV=production node scripts/check-env.js",
     "dist": "node scripts/dist-dispatch.js",

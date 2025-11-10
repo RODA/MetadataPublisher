@@ -12,78 +12,103 @@
 
       /* App grid: top toolbar + content area */
       .app {
-          display: grid;
-          grid-template-rows: var(--toolbar-height, 40px) 1fr;
-          height: 100vh;
-          min-height: 0; /* allow children to shrink for overflow */
+        display: grid;
+        grid-template-rows: var(--toolbar-height, 40px) 1fr;
+        height: 100vh;
+        min-height: 0; /* allow children to shrink for overflow */
       }
 
-      /* Three-column content: tree area | splitter | metadata area */
+      /* Three-column content: tree | splitter | metadata */
       .content {
-          display: grid;
-          grid-template-columns: var(--tree-width, 250px) var(--splitter-width, 2px) 1fr;
-          min-height: 0;
+        display: grid;
+        grid-template-columns: var(--tree-width, 250px) var(--splitter-width, 2px) 1fr;
+        min-height: 0;
       }
 
       .toolbar {
-          background: #efefef;
-          border-bottom: 1px solid var(--border-color, #c9c9c9);
-          height: var(--toolbar-height);
-          display: flex;
-          align-items: center;
-          padding: 0 8px;
-          gap: 8px;
+        background: #efefef;
+        border-bottom: 1px solid var(--border-color, #c9c9c9);
+        height: var(--toolbar-height);
+        display: flex;
+        align-items: center;
+        padding: 0 8px;
+        gap: 8px;
       }
 
       .tree-area {
-          background: #ffffff;
-          border-right: 1px solid var(--border-color, #c9c9c9);
-          padding: 8px;
-          overflow: auto;
-          min-width: var(--tree-min-width, 200px);
+        background: #ffffff;
+        border-right: 1px solid var(--border-color, #c9c9c9);
+        padding: 8px;
+        overflow: auto;
+        min-width: var(--tree-min-width, 200px);
       }
 
       .splitter {
-          cursor: col-resize;
-          background: linear-gradient(to right, #d0d0d0, #bdbdbd, #d0d0d0);
-          box-shadow: inset 1px 0 0 #cfcfcf, inset -1px 0 0 #cfcfcf;
+        cursor: col-resize;
+        background: linear-gradient(to right, #d0d0d0, #bdbdbd, #d0d0d0);
+        box-shadow: inset 1px 0 0 #cfcfcf, inset -1px 0 0 #cfcfcf;
       }
 
       .metadata-area {
-          background: #ffffff;
-          overflow: auto;
+        background: #ffffff;
+        overflow: auto;
       }
 
       /* Optional visual separators inside metadata area */
       .metadata-area h1 {
-          margin: 12px;
+        margin: 12px;
+        font-size: 1.5rem;
+        font-weight: 600;
       }
 
       .metadata-area p {
-          margin: 0 12px 12px 12px;
+        margin: 0 12px 12px 12px;
       }
 
-			.loader {
-				font-size: 2rem;
-				font-weight: 500;
-				color: #ffffff;
-				position: fixed;
-				z-index: 1050;
-				left: calc(50% - 50px);
-				top: calc(50% - 10px);
-				text-align: center;
-			}
+      .loader {
+        font-size: 2rem;
+        font-weight: 500;
+        color: #ffffff;
+        position: fixed;
+        z-index: 1050;
+        left: calc(50% - 50px);
+        top: calc(50% - 10px);
+        text-align: center;
+      }
 
-			.cover {
-				top: 0;
-				display: block;
-				position: fixed;
-				width: 100%;
-				height: 100%;
-				background-color: rgba(0, 0, 0, 0.7);
-				z-index: 1040;
-			}
+      .cover {
+        top: 0;
+        display: block;
+        position: fixed;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        z-index: 1040;
+      }
 
+      /* Metadata content wrapper inside metadata-area */
+      .meta-content {
+        padding: 8px 12px;
+      }
+
+      /* Inline controls on top toolbar */
+      .tree-controls button {
+        width: 27px;
+        height: 26px;
+        line-height: 20px;
+        padding: 0;
+        text-align: center;
+        border: 1px solid #c0c0c0;
+        background: #fff;
+        cursor: pointer;
+        border-radius: 4px;
+        margin: 0 2px; /* a bit of left-right spacing */
+      }
+
+      .tree-controls button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
     </style>
   </head>
   <body>
@@ -92,13 +117,15 @@
     <div class="app">
       <div class="toolbar" id="toolbar" role="toolbar" aria-label="App Toolbar"></div>
       <div class="content">
-        <div class="tree-area"></div>
-        <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="Resize panels" tabindex="0"></div>
-        <div class="metadata-area">
-          <h1 data-i18n="page.main.title"></h1>
-          <p data-i18n="page.main.body"></p>
-        </div>
+      <div class="tree-area"></div>
+      <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="Resize panels" tabindex="0"></div>
+      <div class="metadata-area">
+      <div class="meta-content">
+        <h1 data-i18n="page.main.title"></h1>
+        <p data-i18n="page.main.body"></p>
+      </div>
+      </div>
       </div>
     </div>
   </body>
-  </html>
+</html>
