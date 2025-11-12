@@ -1,3 +1,6 @@
+# from the terminal, run: Rscript load_codebook_native.R <xml-path> <r-library-dir>
+# from the app, the script file is spawned with these two arguments
+
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 2L) {
     stop("Usage: load_codebook_native.R <xml-path> <r-library-dir>")

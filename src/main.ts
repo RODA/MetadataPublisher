@@ -61,7 +61,7 @@ function runNativeRScript(scriptPath: string, args: string[]): Promise<string> {
     }
     const rscript = nativeRscriptPath;
     return new Promise((resolve, reject) => {
-        console.log('[Main] running native R script', scriptPath, args);
+        // console.log('[Main] running native R script', scriptPath, args);
         const proc = spawn(rscript, [scriptPath, ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
         const typedProc = proc as ChildProcessWithoutNullStreams;
         let stdout = '';
@@ -80,7 +80,7 @@ function runNativeRScript(scriptPath: string, args: string[]): Promise<string> {
                 reject(new Error('Native R script produced no output'));
                 return;
             }
-            console.log('[Main] native R script succeeded, output length', output.length);
+            // console.log('[Main] native R script succeeded, output length', output.length);
             resolve(output);
         });
     });
@@ -101,19 +101,19 @@ async function loadXmlFile(hostFilePath: string) {
         let codebook: JsonValue;
         if (nativeRscriptPath) {
             try {
-                console.log('[Main] loading XML via native R', hostFilePath);
+                // console.log('[Main] loading XML via native R', hostFilePath);
                 codebook = await loadXmlViaNativeR(hostFilePath);
-                console.log('[Main] native codebook loaded, tree root', (codebook as any)?.name);
+                // console.log('[Main] native codebook loaded, tree root', (codebook as any)?.name);
             } catch (error: any) {
-                console.error('[Main] native codebook load failed, falling back to WebR', error);
+                // console.error('[Main] native codebook load failed, falling back to WebR', error);
                 nativeRscriptPath = null;
                 await ensureWebRInitialized();
-                console.log('[Main] loading XML via WebR fallback', hostFilePath);
+                // console.log('[Main] loading XML via WebR fallback', hostFilePath);
                 codebook = await loadXmlViaWebR(hostFilePath);
             }
         } else {
             await ensureWebRInitialized();
-            console.log('[Main] loading XML via WebR', hostFilePath);
+            // console.log('[Main] loading XML via WebR', hostFilePath);
             codebook = await loadXmlViaWebR(hostFilePath);
         }
         loadedCodebook = codebook;
@@ -248,7 +248,7 @@ function finalizeBoot() {
 async function ensureWebRInitialized() {
     if (webRInitialized) return;
     if (!webRInitPromise) {
-        console.log('[Main] initializing WebR (fallback)');
+        // console.log('[Main] initializing WebR (fallback)');
         webRInitPromise = initWebR().then(() => {
             webRInitialized = true;
         }).catch((error) => {
@@ -260,7 +260,7 @@ async function ensureWebRInitialized() {
 }
 
 async function initializeRBackend() {
-    console.log('[Main] initializeRBackend: native available?', Boolean(nativeRscriptPath));
+    // console.log('[Main] initializeRBackend: native available?', Boolean(nativeRscriptPath));
     if (nativeRscriptPath) {
         try {
             const bundle = (await getOrBuildDDITree(async () => {
@@ -270,15 +270,15 @@ async function initializeRBackend() {
             dditree = bundle.tree;
             ddielements = bundle.elements;
             broadcastDdiElements();
-            console.log('[Main] native DDI bundle ready, tree root', (dditree as any)?.name);
+            // console.log('[Main] native DDI bundle ready, tree root', (dditree as any)?.name);
             finalizeBoot();
             return;
         } catch (error) {
-            console.error('[Main] native R initialization failed, falling back to WebR', error);
+            // console.error('[Main] native R initialization failed, falling back to WebR', error);
             nativeRscriptPath = null;
         }
     }
-    console.log('[Main] falling back to WebR initialization');
+    // console.log('[Main] falling back to WebR initialization');
     await ensureWebRInitialized();
 }
 
@@ -472,7 +472,7 @@ function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
 }
 
 async function findNativeRscript(): Promise<string | null> {
-    console.log('[Main] searching for native Rscript executable...');
+    // console.log('[Main] searching for native Rscript executable...');
     return findExecutable('Rscript');
 }
 
@@ -515,11 +515,11 @@ app.whenReady().then(async () => {
     }
 
     nativeRscriptPath = await findNativeRscript();
-    if (nativeRscriptPath) {
-        console.log(`[Main] Native Rscript available at ${nativeRscriptPath}`);
-    } else {
-        console.log('[Main] Native Rscript not found; falling back to WebR for codebook loading');
-    }
+    // if (nativeRscriptPath) {
+    //     console.log(`[Main] Native Rscript available at ${nativeRscriptPath}`);
+    // } else {
+    //     console.log('[Main] Native Rscript not found; falling back to WebR for codebook loading');
+    // }
 
     createMainWindow();
     setupIPC();
