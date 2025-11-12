@@ -92,3 +92,47 @@ body.dragging, body.dragging * {
         transform: rotate(360deg);
     }
 }
+
+/* ---- Form controls used in the metadata area ---- */
+.form-grid {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 8px 12px; /* row gap, column gap */
+    align-items: start;
+}
+
+.form-label {
+    font-weight: 500;
+    padding-top: 6px; /* vertically align with inputs */
+    font-size: 0.9rem;
+    color: #333;
+}
+
+.form-control {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color, #c9c9c9);
+    border-radius: 6px;
+    background: #fff;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: #4c82ff;
+    box-shadow: 0 0 0 3px rgba(76, 130, 255, 0.25);
+}
+
+textarea.form-control {
+    min-height: 120px;
+    resize: vertical;
+}
+
+/* Small subtitle used for blocks like "Attributes" */
+.meta-subtitle {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin: 8px 0 6px 0;
+}

@@ -18,6 +18,7 @@ coms.on('removeCover', () => {
 });
 
 export {};
+let fullPathRendering = false;
 
 // i18n: initialize with whatever main chose (will be synced shortly)
 try {
@@ -339,6 +340,14 @@ function initTree() {
     controlsSlot.innerHTML = '';
     if (!state.treeRoot || !state.selectedId) return;
 
+    // Helper: build display label based on current mode (name/title/both)
+    const makeLabel = (n: string): string => {
+      const title = state.elements?.[normalizeName(n)];
+      if (state.mode === 'name') return n;
+      if (state.mode === 'title') return title || n;
+      return title ? `${n}: ${title}` : n;
+    };
+
     // Build path tokens after 'root'
     const keyPath = state.selectedPath.length ? [...state.selectedPath] : idToPath(state.selectedId);
     const normRoot = state.treeRoot;
@@ -352,7 +361,10 @@ function initTree() {
       // Title
       const title = document.createElement('h1');
       const displayPath = namePath.length > 1 ? namePath.slice(1) : namePath;
-      title.textContent = displayPath.join(' / ');
+      const own = displayPath[displayPath.length - 1] || '';
+      title.textContent = fullPathRendering
+        ? displayPath.map(makeLabel).join(' / ')
+        : makeLabel(own);
       title.style.margin = '12px';
       metaContent.appendChild(title);
 
@@ -364,10 +376,14 @@ function initTree() {
 
       // Leaf value editor
       if (isLeaf && hasValue) {
+        // grid row: label | control
+        const grid = document.createElement('div');
+        grid.className = 'form-grid';
+
         const label = document.createElement('div');
         label.textContent = 'Value';
-        label.style.marginBottom = '6px';
-        controls.appendChild(label);
+        label.className = 'form-label';
+        grid.appendChild(label);
 
         const rawValue = node.value === null || node.value === undefined ? '' : String(node.value);
 
@@ -378,11 +394,10 @@ function initTree() {
         const input = document.createElement(needsTextarea ? 'textarea' : 'input');
         if (input instanceof HTMLTextAreaElement) {
           input.rows = 7;
-          input.style.width = '96%';
         } else {
           (input as HTMLInputElement).type = 'text';
-          (input as HTMLInputElement).style.width = '96%';
         }
+        (input as HTMLInputElement | HTMLTextAreaElement).className = 'form-control';
         (input as HTMLInputElement | HTMLTextAreaElement).value = currentStr;
         const apply = () => {
           const newVal = (input as HTMLInputElement | HTMLTextAreaElement).value;
@@ -390,31 +405,30 @@ function initTree() {
         };
         input.addEventListener('change', apply);
         input.addEventListener('blur', apply);
-        controls.appendChild(input);
+        grid.appendChild(input);
+        controls.appendChild(grid);
       } else if (isLeaf) {
         const info = document.createElement('div');
         info.textContent = 'This element has no text value.';
         controls.appendChild(info);
       } else {
-        const info = document.createElement('div');
-        info.textContent = 'This node is a parent (not directly editable).';
-        controls.appendChild(info);
+        // Parent node selected; details for descendants will be rendered below.
       }
 
-      // Attributes editor
+      // Attributes editor for the selected node
       if (node.attributes && typeof node.attributes === 'object') {
         const attrsTitle = document.createElement('div');
         attrsTitle.textContent = 'Attributes';
-        attrsTitle.style.margin = '12px 0 6px 0';
-        attrsTitle.style.fontWeight = '600';
+        attrsTitle.className = 'meta-subtitle';
         controls.appendChild(attrsTitle);
         const table = document.createElement('div');
-        table.style.display = 'grid';
-        table.style.gridTemplateColumns = '160px 1fr';
-        table.style.gap = '6px 8px';
+        table.className = 'form-grid';
         for (const [ak, av] of Object.entries(node.attributes)) {
-          const lab = document.createElement('div'); lab.textContent = String(ak);
+          const lab = document.createElement('div');
+          lab.textContent = String(ak);
+          lab.className = 'form-label';
           const inp = document.createElement('input'); (inp as HTMLInputElement).type = 'text';
+          (inp as HTMLInputElement).className = 'form-control';
           (inp as HTMLInputElement).value = av === null || av === undefined ? '' : String(av);
           (inp as HTMLInputElement).addEventListener('change', () => { (node.attributes as any)[ak] = (inp as HTMLInputElement).value; });
           table.appendChild(lab); table.appendChild(inp);
@@ -504,6 +518,94 @@ function initTree() {
       controlsSlot.appendChild(upBtn); controlsSlot.appendChild(dnBtn);
 
       metaContent.appendChild(controls);
+
+      // If the selected node is a parent, render a readable editor for all descendants
+      if (node.children && node.children.length) {
+
+        const subtreeContainer = document.createElement('div');
+        subtreeContainer.style.margin = '0 12px 24px 12px';
+        metaContent.appendChild(subtreeContainer);
+
+        const renderAttributes = (n: NormNode, parentEl: HTMLElement) => {
+          if (!n.attributes || typeof n.attributes !== 'object') return;
+          const attrsTitle = document.createElement('div');
+          attrsTitle.textContent = 'Attributes';
+          attrsTitle.className = 'meta-subtitle';
+          parentEl.appendChild(attrsTitle);
+          const grid = document.createElement('div');
+          grid.className = 'form-grid';
+          for (const [ak, av] of Object.entries(n.attributes)) {
+            const lab = document.createElement('div');
+            lab.textContent = String(ak);
+            lab.className = 'form-label';
+            const inp = document.createElement('input');
+            (inp as HTMLInputElement).type = 'text';
+            (inp as HTMLInputElement).className = 'form-control';
+            (inp as HTMLInputElement).value = av === null || av === undefined ? '' : String(av);
+            (inp as HTMLInputElement).addEventListener('change', () => { (n.attributes as any)[ak] = (inp as HTMLInputElement).value; });
+            grid.appendChild(lab); grid.appendChild(inp);
+          }
+          parentEl.appendChild(grid);
+        };
+
+        const renderValue = (n: NormNode, parentEl: HTMLElement) => {
+          const rawValue = n.value === null || n.value === undefined ? '' : String(n.value);
+          const currentStr = rawValue.replace(/^\s+/, '').replace(/\s+$/, '');
+          const needsTextarea = currentStr.length > 60 || /\r|\n/.test(currentStr);
+          const grid = document.createElement('div'); grid.className = 'form-grid';
+          const lab = document.createElement('div'); lab.className = 'form-label'; lab.textContent = 'Value';
+          const input = document.createElement(needsTextarea ? 'textarea' : 'input');
+          if (input instanceof HTMLTextAreaElement) input.rows = 7; else (input as HTMLInputElement).type = 'text';
+          (input as HTMLInputElement | HTMLTextAreaElement).className = 'form-control';
+          (input as HTMLInputElement | HTMLTextAreaElement).value = currentStr;
+          const apply = () => {
+            const newVal = (input as HTMLInputElement | HTMLTextAreaElement).value;
+            n.value = newVal.replace(/^\s+/, '').replace(/\s+$/, '');
+          };
+          input.addEventListener('change', apply); input.addEventListener('blur', apply);
+          grid.appendChild(lab); grid.appendChild(input);
+          parentEl.appendChild(grid);
+        };
+
+        const renderDeep = (n: NormNode, pathNames: string[], level: number) => {
+          const section = document.createElement('section');
+          const hTag = `h${Math.min(level, 6)}` as keyof HTMLElementTagNameMap;
+          const heading = document.createElement(hTag);
+
+          // const labelPath = pathNames.map(makeLabel).join(' / ');
+          // heading.textContent = labelPath;
+          // heading.style.margin = '18px 0 8px 0';
+          // section.appendChild(heading);
+
+          // Only leaves show their full path; intermediates show only their own label
+          const isLeafNode = !n.children || n.children.length === 0;
+          const fullPath = pathNames.map(makeLabel).join(' / ');
+          const ownLabel = makeLabel(pathNames[pathNames.length - 1]);
+          heading.textContent = fullPathRendering ? fullPath : ownLabel;
+          heading.style.margin = '18px 0 8px 0';
+          section.appendChild(heading);
+
+          // Append parent section first so order is parent -> children
+          subtreeContainer.appendChild(section);
+
+          // If this node has a value, show it
+          if (typeof n.value !== 'undefined' && n.value !== null) renderValue(n, section);
+          // Show attributes (if any)
+          renderAttributes(n, section);
+
+          // Recurse into children (pre-order traversal)
+          if (n.children && n.children.length) {
+            for (const child of n.children) {
+              renderDeep(child, pathNames.concat([child.name]), level + 1);
+            }
+          }
+        };
+
+        for (const child of node.children) {
+          renderDeep(child, [child.name], 2);
+        }
+      }
+
       return; // handled normalized path
     }
     // Legacy path fallback removed; normalized path handled above

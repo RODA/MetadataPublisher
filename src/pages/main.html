@@ -51,15 +51,23 @@
 
       .metadata-area {
         background: #ffffff;
-        overflow: auto;
+        /* Ensure this grid child can actually scroll */
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
       }
 
       /* Optional visual separators inside metadata area */
       .metadata-area h1 {
         margin: 12px;
-        font-size: 1.3rem;
-        font-weight: 500;
+        font-size: 1.6rem; /* top level largest */
+        font-weight: 600;
       }
+      .metadata-area h2 { font-size: 1.35rem; font-weight: 600; margin: 18px 12px 8px 12px; }
+      .metadata-area h3 { font-size: 1.18rem; font-weight: 600; margin: 18px 12px 8px 12px; }
+      .metadata-area h4 { font-size: 1.05rem; font-weight: 600; margin: 16px 12px 6px 12px; }
+      .metadata-area h5 { font-size: 0.98rem; font-weight: 600; margin: 16px 12px 6px 12px; }
+      .metadata-area h6 { font-size: 0.94rem; font-weight: 600; margin: 14px 12px 6px 12px; }
 
       .metadata-area p {
         margin: 0 12px 12px 12px;
