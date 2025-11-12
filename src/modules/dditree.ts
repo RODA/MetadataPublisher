@@ -37,8 +37,11 @@ export function computeSignature(): string {
 
     // Rebuild tree only when the DDI codebook builder changes
     try {
-        const rHelper = fs.readFileSync(path.join(__dirname, '../src/library/R/DDI_Codebook_2.6.R'));
-        hash.update(rHelper);
+        const libraryDir = path.join(__dirname, '../src/library/R');
+        const pkgData = fs.readFileSync(path.join(libraryDir, 'library.data.gz'));
+        hash.update(pkgData);
+        const pkgMeta = fs.readFileSync(path.join(libraryDir, 'library.js.metadata'));
+        hash.update(pkgMeta);
     } catch {}
 
     return hash.digest('hex');

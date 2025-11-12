@@ -110,7 +110,7 @@ normalize_codebook <- function(cb) {
 }
 
 make_DDI_tree <- function(root = "codeBook") {
-    DDIC <- get("DDIC", envir = cacheEnv)
+    DDIC <- get("DDIC", envir = DDIwR::getEnv())
 
     if (!is.list(DDIC) || is.null(DDIC[[root]])) {
         admisc::stopError(sprintf("Root element '%s' not found in DDIC.", root))

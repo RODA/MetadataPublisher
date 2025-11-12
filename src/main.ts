@@ -1,9 +1,10 @@
 const development = process.env.NODE_ENV === 'development';
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import * as path from 'path';
 import * as fs from "fs";
+import { ChildProcessWithoutNullStreams, execFile, spawn } from 'child_process';
 import { WebR } from "webr";
 import { ungzip } from "pako";
 import { i18n } from './i18n';
@@ -26,6 +27,12 @@ let loadedCodebook: JsonValue | null = null;
 let mainWindow: BrowserWindow;
 const webR = new WebR({ interactive: false });
 let booting = true; // Block UI until R is ready and initial data loaded
+let nativeRscriptPath: string | null = null;
+const nativeRLibraryDir = path.join(__dirname, '../src/library/R');
+const nativeCodebookScript = path.join(nativeRLibraryDir, 'load_codebook_native.R');
+const nativeDDITreeScript = path.join(nativeRLibraryDir, 'build_ddi_tree_native.R');
+let webRInitPromise: Promise<void> | null = null;
+let webRInitialized = false;
 
 const windowid: { [key: string]: number } = {
     mainWindow: 1,
@@ -33,12 +40,7 @@ const windowid: { [key: string]: number } = {
 
 
 
-async function loadXmlViaR(hostFilePath: string) {
-    // Send message to renderer to start loader
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('addCover', i18n.t('page.main.loader'));
-    }
-
+async function loadXmlViaWebR(hostFilePath: string): Promise<JsonValue> {
     const dir = path.dirname(hostFilePath);
     const base = path.basename(hostFilePath);
 
@@ -46,26 +48,84 @@ async function loadXmlViaR(hostFilePath: string) {
     await mount({ what: dir, where: '/hostfile' });
 
     const rPath = `/hostfile/${base}`;
-    // mainWindow.webContents.send(
-    //     'consolog',
-    //     `codeBook <- getCodebook("${utils.escapeForR(rPath)}")`
-    // );
-
     await webR.evalRVoid(`codeBook <- getCodebook("${utils.escapeForR(rPath)}")`);
 
     const getCodebookFromJSON = 'jsonlite::toJSON(normalize_codebook(codeBook), auto_unbox = TRUE)';
-
     const response = await webR.evalRString(getCodebookFromJSON);
-    loadedCodebook = JSON.parse(response) as JsonValue;
+    return JSON.parse(response) as JsonValue;
+}
 
-    // Set as current document and send to current window
+function runNativeRScript(scriptPath: string, args: string[]): Promise<string> {
+    if (!nativeRscriptPath) {
+        return Promise.reject(new Error('Native Rscript is not available'));
+    }
+    const rscript = nativeRscriptPath;
+    return new Promise((resolve, reject) => {
+        console.log('[Main] running native R script', scriptPath, args);
+        const proc = spawn(rscript, [scriptPath, ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
+        const typedProc = proc as ChildProcessWithoutNullStreams;
+        let stdout = '';
+        let stderr = '';
+        typedProc.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
+        typedProc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+        typedProc.on('error', (error: Error) => reject(error));
+        typedProc.on('close', (code: number) => {
+            if (code !== 0) {
+                const message = stderr.trim() || `Rscript exited with code ${code}`;
+                reject(new Error(message));
+                return;
+            }
+            const output = stdout.trim();
+            if (!output) {
+                reject(new Error('Native R script produced no output'));
+                return;
+            }
+            console.log('[Main] native R script succeeded, output length', output.length);
+            resolve(output);
+        });
+    });
+}
+
+async function loadXmlViaNativeR(hostFilePath: string): Promise<JsonValue> {
+    const raw = await runNativeRScript(nativeCodebookScript, [hostFilePath, nativeRLibraryDir]);
+    return JSON.parse(raw) as JsonValue;
+}
+
+async function loadXmlFile(hostFilePath: string) {
+    // Send message to renderer to start loader
     if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('xmlcodebook', loadedCodebook);
+        mainWindow.webContents.send('addCover', i18n.t('page.main.loader'));
     }
 
-    // Send message to renderer to clear loader
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('removeCover');
+    try {
+        let codebook: JsonValue;
+        if (nativeRscriptPath) {
+            try {
+                console.log('[Main] loading XML via native R', hostFilePath);
+                codebook = await loadXmlViaNativeR(hostFilePath);
+                console.log('[Main] native codebook loaded, tree root', (codebook as any)?.name);
+            } catch (error: any) {
+                console.error('[Main] native codebook load failed, falling back to WebR', error);
+                nativeRscriptPath = null;
+                await ensureWebRInitialized();
+                console.log('[Main] loading XML via WebR fallback', hostFilePath);
+                codebook = await loadXmlViaWebR(hostFilePath);
+            }
+        } else {
+            await ensureWebRInitialized();
+            console.log('[Main] loading XML via WebR', hostFilePath);
+            codebook = await loadXmlViaWebR(hostFilePath);
+        }
+        loadedCodebook = codebook;
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('xmlcodebook', loadedCodebook);
+        }
+    } finally {
+        // Send message to renderer to clear loader
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('removeCover');
+        }
     }
 }
 
@@ -132,7 +192,6 @@ async function initWebR() {
         );
 
         await mount({ what: appRDir, where: '/app' });
-        await webR.evalRVoid('source("/app/DDI_Codebook_2.6.R")');
         await webR.evalRVoid('source("/app/utils.R")');
 
         await webR.evalRVoid(`.libPaths(c(.libPaths(), "/my-library"))`);
@@ -140,14 +199,13 @@ async function initWebR() {
 
         // Source local R helper(s) after R initializes
         try {
-            // const startTime = Date.now();
             const bundle = await (getOrBuildDDITree(async () => {
                 const tree = await webR.evalRString(
                     'jsonlite::toJSON(make_DDI_tree(), auto_unbox = TRUE)'
                 );
 
                 const elements = await webR.evalRString(
-                    'jsonlite::toJSON(get("DDIC", envir = cacheEnv), auto_unbox = TRUE)'
+                    'jsonlite::toJSON(get("DDIC", envir = getEnv()), auto_unbox = TRUE)'
                 );
 
                 return ({
@@ -156,31 +214,72 @@ async function initWebR() {
                 }) as DdiBundle;
             })) as DdiBundle;
 
-            // console.log(`Tree loaded in ${(Date.now() - startTime)/1000}s`);
             dditree = bundle.tree;
             ddielements = bundle.elements;
-            // Notify renderers elements are ready for labeling
-            try {
-                BrowserWindow.getAllWindows().forEach((win) => {
-                    if (!win.isDestroyed()) win.webContents.send('ddi-elements', ddielements);
-                });
-            } catch { /* noop */ }
+            broadcastDdiElements();
         } catch (e) {
             // Non-fatal in case the source file is missing in some environments
         }
 
-        // Boot finished successfully: enable UI and remove cover
-        try {
-            booting = false;
-            const mainMenu = Menu.buildFromTemplate(buildMainMenuTemplate());
-            Menu.setApplicationMenu(mainMenu);
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('removeCover');
-            }
-        } catch { /* noop */ }
+        finalizeBoot();
     } catch (error) {
         throw error;
     }
+}
+
+function broadcastDdiElements() {
+    if (!ddielements) return;
+    try {
+        BrowserWindow.getAllWindows().forEach((win) => {
+            if (!win.isDestroyed()) win.webContents.send('ddi-elements', ddielements);
+        });
+    } catch { /* noop */ }
+}
+
+function finalizeBoot() {
+    booting = false;
+    const mainMenu = Menu.buildFromTemplate(buildMainMenuTemplate());
+    Menu.setApplicationMenu(mainMenu);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('removeCover');
+    }
+}
+
+async function ensureWebRInitialized() {
+    if (webRInitialized) return;
+    if (!webRInitPromise) {
+        console.log('[Main] initializing WebR (fallback)');
+        webRInitPromise = initWebR().then(() => {
+            webRInitialized = true;
+        }).catch((error) => {
+            webRInitPromise = null;
+            throw error;
+        });
+    }
+    return webRInitPromise;
+}
+
+async function initializeRBackend() {
+    console.log('[Main] initializeRBackend: native available?', Boolean(nativeRscriptPath));
+    if (nativeRscriptPath) {
+        try {
+            const bundle = (await getOrBuildDDITree(async () => {
+                const raw = await runNativeRScript(nativeDDITreeScript, [nativeRLibraryDir]);
+                return JSON.parse(raw) as DdiBundle;
+            })) as DdiBundle;
+            dditree = bundle.tree;
+            ddielements = bundle.elements;
+            broadcastDdiElements();
+            console.log('[Main] native DDI bundle ready, tree root', (dditree as any)?.name);
+            finalizeBoot();
+            return;
+        } catch (error) {
+            console.error('[Main] native R initialization failed, falling back to WebR', error);
+            nativeRscriptPath = null;
+        }
+    }
+    console.log('[Main] falling back to WebR initialization');
+    await ensureWebRInitialized();
 }
 
 
@@ -290,7 +389,7 @@ function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
                 if (canceled || !filePaths || filePaths.length === 0) return;
                 try {
                     const filePath = filePaths[0];
-                    await loadXmlViaR(filePath);
+                    await loadXmlFile(filePath);
                 } catch (e: any) {
                     dialog.showErrorBox(
                         i18n.t('messages.load.failed'),
@@ -372,7 +471,31 @@ function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
     return template;
 }
 
-app.whenReady().then(() => {
+async function findNativeRscript(): Promise<string | null> {
+    console.log('[Main] searching for native Rscript executable...');
+    return findExecutable('Rscript');
+}
+
+function findExecutable(name: string): Promise<string | null> {
+    const finder = process.platform === 'win32' ? 'where' : 'which';
+    return new Promise((resolve) => {
+        execFile(finder, [name], (error, stdout) => {
+            if (error || !stdout) {
+                resolve(null);
+                return;
+            }
+            const lines = stdout.toString().split(/\r?\n/);
+            const candidate = (lines[0] || '').trim();
+            if (!candidate) {
+                resolve(null);
+                return;
+            }
+            resolve(candidate);
+        });
+    });
+}
+
+app.whenReady().then(async () => {
   // Initialize i18n with saved language or system locale (best-effort)
     try {
         const sysLocale = app.getLocale ? app.getLocale() : 'en';
@@ -391,12 +514,19 @@ app.whenReady().then(() => {
         i18n.init('en', __dirname);
     }
 
+    nativeRscriptPath = await findNativeRscript();
+    if (nativeRscriptPath) {
+        console.log(`[Main] Native Rscript available at ${nativeRscriptPath}`);
+    } else {
+        console.log('[Main] Native Rscript not found; falling back to WebR for codebook loading');
+    }
+
     createMainWindow();
     setupIPC();
 
-    initWebR().catch((error) => {
+    initializeRBackend().catch((error) => {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        dialog.showErrorBox("Failed to initialize WebR", errorMessage);
+        dialog.showErrorBox("Failed to initialize R backend", errorMessage);
     });
 
     // Ensure a default label mode exists
