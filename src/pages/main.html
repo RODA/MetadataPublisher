@@ -51,10 +51,70 @@
 
       .metadata-area {
         background: #c5e2d0d7;
-        /* Ensure this grid child can actually scroll */
         min-height: 0;
         overflow-y: auto;
         overflow-x: hidden;
+        position: relative;
+        border: 2px solid transparent;
+        display: flex;
+        flex-direction: column;
+        padding: 12px;
+        box-sizing: border-box;
+      }
+
+      .metadata-area::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: url('../assets/stats.png') center center no-repeat;
+        background-size: 60% auto;
+        opacity: 0.12;
+        pointer-events: none;
+        border-radius: 6px;
+      }
+
+      .metadata-area.has-metadata::after {
+        opacity: 0;
+      }
+
+      .metadata-area.is-dragover {
+        border: 2px dashed rgba(76, 130, 255, 0.8);
+        box-shadow: inset 0 0 0 1px rgba(76, 130, 255, 0.6);
+      }
+
+      .metadata-drop-hint {
+        pointer-events: none;
+        margin-bottom: 16px;
+        z-index: 1;
+      }
+
+      .metadata-area.has-metadata .metadata-drop-hint {
+        display: none;
+      }
+
+      .meta-content {
+        flex: 1;
+        position: relative;
+        z-index: 1;
+        min-height: 200px;
+      }
+
+      .metadata-drop-hint h2 {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 600;
+      }
+
+      .metadata-drop-hint p {
+        margin: 6px 0 0;
+        font-size: 0.95rem;
+        color: #334358;
+      }
+
+      .metadata-drop-formats {
+        font-size: 0.9rem;
+        color: #4c82ff;
+        margin-top: 6px;
       }
 
       /* Optional visual separators inside metadata area */
@@ -134,11 +194,13 @@
       <div class="content">
       <div class="tree-area"></div>
       <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" aria-label="Resize panels" tabindex="0"></div>
-      <div class="metadata-area">
-      <div class="meta-content">
-        <h1 data-i18n="page.main.title"></h1>
-        <p data-i18n="page.main.body"></p>
-      </div>
+      <div class="metadata-area" id="metadataDropZone">
+        <div class="metadata-drop-hint" id="metadataDropHint">
+          <h2 data-i18n="page.main.drop.title"></h2>
+          <p data-i18n="page.main.drop.body"></p>
+          <p class="metadata-drop-formats" data-i18n="page.main.drop.formats"></p>
+        </div>
+        <div class="meta-content" id="metaContent"></div>
       </div>
       </div>
     </div>

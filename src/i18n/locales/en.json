@@ -1,7 +1,8 @@
 {
   "menu.file": "File",
-  "menu.file.load": "Load DDI XML File",
-  "menu.file.loadtitle": "Load DDI XML File",
+  "menu.file.load": "Load metadata file",
+  "menu.file.loadtitle": "Load a dataset or a metadata file",
+  "menu.file.loadfilter": "Supported files (XML, SAV, POR, DTA, RDS, XPT, XLSX)",
 
   "menu.edit": "Edit",
   "menu.edit.undo": "Undo",
@@ -24,9 +25,13 @@
   "tree.nametitles": "Names and titles",
 
   "messages.load.failed": "Load failed",
+  "messages.load.unsupported": "Unsupported file format. Drop a DDI XML, SPSS (.sav), Stata (.dta), R (.rds), SAS (.xpt), or Excel (.xlsx) file.",
   "messages.app.initializing": "Initializing...",
 
   "page.main.title": "Metadata Publisher",
   "page.main.body": "A tool for documenting and publishing metadata using the DDI Codebook standard.",
+  "page.main.drop.title": "Drop or select a metadata file",
+  "page.main.drop.body": "Drag a supported file or use File > Load to edit its metadata.",
+  "page.main.drop.formats": "Supported formats: XML, SPSS (.sav, .por), Stata (.dta), R (.rds), SAS (.xpt), Excel (.xlsx).",
   "page.main.loader": "Loading..."
 }

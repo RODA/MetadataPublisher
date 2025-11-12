@@ -1,7 +1,8 @@
 {
   "menu.file": "Fișier",
-  "menu.file.load": "Încărcare fișier XML DDI",
-  "menu.file.loadtitle": "Încărcare fișier XML DDI",
+  "menu.file.load": "Încarcă fișier de metadate",
+  "menu.file.loadtitle": "Încarcă un set de date sau metadate",
+  "menu.file.loadfilter": "Fișiere acceptate (XML, SAV, POR, DTA, RDS, XPT, XLSX)",
 
   "menu.edit": "Editare",
   "menu.edit.undo": "Anulare",
@@ -24,9 +25,13 @@
   "tree.nametitles": "Nume și titluri",
 
   "messages.load.failed": "Încărcare eșuată",
+  "messages.load.unsupported": "Fișier invalid. Plasați un DDI XML, SPSS (.sav), Stata (.dta), R (.rds), SAS (.xpt) sau Excel (.xlsx).",
   "messages.app.initializing": "Inițializare...",
 
   "page.main.title": "Metadata Publisher",
   "page.main.body": "Un instrument pentru documentarea și publicarea (meta)datelor utilizând standardul DDI Codebook.",
+  "page.main.drop.title": "Plasați sau selectați un fișier de metadate",
+  "page.main.drop.body": "Trageți un fișier acceptat sau utilizați Fișier > Încărcare pentru a-i edita metadatele.",
+  "page.main.drop.formats": "Formate acceptate: XML, SPSS (.sav, .por), Stata (.dta), R (.rds), SAS (.xpt), Excel (.xlsx).",
   "page.main.loader": "Se încarcă..."
 }

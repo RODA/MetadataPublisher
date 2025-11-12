@@ -4,6 +4,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import * as path from 'path';
 import * as fs from "fs";
+import * as os from "os";
 import { ChildProcessWithoutNullStreams, execFile, spawn } from 'child_process';
 import { WebR } from "webr";
 import { ungzip } from "pako";
@@ -14,6 +15,17 @@ import { MountArgs } from './interfaces/main';
 import { getOrBuildDDITree, JsonValue, DdiBundle } from './modules/dditree';
 
 app.setName('MetadataPublisher');
+
+const SUPPORTED_CODEBOOK_EXTENSIONS = new Set(['xml', 'sav', 'por', 'dta', 'rds', 'xpt', 'xlsx']);
+const SUPPORTED_CODEBOOK_FILTERS = ['xml', 'sav', 'por', 'dta', 'rds', 'xpt', 'xlsx'];
+const getExtension = (filePath: string): string => {
+    return path.extname(filePath).replace(/^\./, '').toLowerCase();
+};
+
+const isSupportedCodebookFile = (filePath: string): boolean => {
+    const ext = getExtension(filePath);
+    return Boolean(ext && SUPPORTED_CODEBOOK_EXTENSIONS.has(ext));
+};
 
 // Static DDI structure (template)
 let dditree: JsonValue | null = null;
@@ -34,13 +46,15 @@ const nativeDDITreeScript = path.join(nativeRLibraryDir, 'build_ddi_tree_native.
 let webRInitPromise: Promise<void> | null = null;
 let webRInitialized = false;
 
+const DROP_TEMP_DIR = path.join(os.tmpdir(), 'metadata-publisher-drops');
+
 const windowid: { [key: string]: number } = {
     mainWindow: 1,
 };
 
 
 
-async function loadXmlViaWebR(hostFilePath: string): Promise<JsonValue> {
+async function loadCodebookViaWebR(hostFilePath: string): Promise<JsonValue> {
     const dir = path.dirname(hostFilePath);
     const base = path.basename(hostFilePath);
 
@@ -86,12 +100,37 @@ function runNativeRScript(scriptPath: string, args: string[]): Promise<string> {
     });
 }
 
-async function loadXmlViaNativeR(hostFilePath: string): Promise<JsonValue> {
+async function loadCodebookViaNativeR(hostFilePath: string): Promise<JsonValue> {
     const raw = await runNativeRScript(nativeCodebookScript, [hostFilePath, nativeRLibraryDir]);
     return JSON.parse(raw) as JsonValue;
 }
 
-async function loadXmlFile(hostFilePath: string) {
+async function ensureDropDir() {
+    try {
+        await fs.promises.mkdir(DROP_TEMP_DIR, { recursive: true });
+    } catch { /* noop */ }
+}
+
+const sanitizeFilename = (name: string): string => name.replace(/[<>:"/\\|?*\u0000]/g, '_');
+
+const writeDroppedFile = async (name: string, data: Buffer): Promise<string> => {
+    await ensureDropDir();
+    const timestamp = Date.now();
+    const cleanName = sanitizeFilename(name) || `dropped-${timestamp}`;
+    const dropPath = path.join(DROP_TEMP_DIR, `${timestamp}-${cleanName}`);
+    await fs.promises.writeFile(dropPath, data);
+    return dropPath;
+};
+
+async function loadCodebookFile(hostFilePath: string) {
+    if (!isSupportedCodebookFile(hostFilePath)) {
+        dialog.showErrorBox(
+            i18n.t('messages.load.failed'),
+            i18n.t('messages.load.unsupported')
+        );
+        return;
+    }
+
     // Send message to renderer to start loader
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('addCover', i18n.t('page.main.loader'));
@@ -101,20 +140,20 @@ async function loadXmlFile(hostFilePath: string) {
         let codebook: JsonValue;
         if (nativeRscriptPath) {
             try {
-                // console.log('[Main] loading XML via native R', hostFilePath);
-                codebook = await loadXmlViaNativeR(hostFilePath);
+                // console.log('[Main] loading codebook via native R', hostFilePath);
+                codebook = await loadCodebookViaNativeR(hostFilePath);
                 // console.log('[Main] native codebook loaded, tree root', (codebook as any)?.name);
             } catch (error: any) {
                 // console.error('[Main] native codebook load failed, falling back to WebR', error);
                 nativeRscriptPath = null;
                 await ensureWebRInitialized();
-                // console.log('[Main] loading XML via WebR fallback', hostFilePath);
-                codebook = await loadXmlViaWebR(hostFilePath);
+                // console.log('[Main] loading codebook via WebR fallback', hostFilePath);
+                codebook = await loadCodebookViaWebR(hostFilePath);
             }
         } else {
             await ensureWebRInitialized();
-            // console.log('[Main] loading XML via WebR', hostFilePath);
-            codebook = await loadXmlViaWebR(hostFilePath);
+            // console.log('[Main] loading codebook via WebR', hostFilePath);
+            codebook = await loadCodebookViaWebR(hostFilePath);
         }
         loadedCodebook = codebook;
 
@@ -346,6 +385,19 @@ function setupIPC() {
                 return;
             }
 
+            if (channel === 'loadFile') {
+                const filePath = String(args[0] ?? '');
+                if (filePath) {
+                    loadCodebookFile(filePath).catch((e: unknown) => {
+                        dialog.showErrorBox(
+                            i18n.t('messages.load.failed'),
+                            String((e && (e as Error).message) ? (e as Error).message : e)
+                        );
+                    });
+                }
+                return;
+            }
+
             return;
         }
 
@@ -372,6 +424,12 @@ function setupIPC() {
             const mode = (v === 'name' || v === 'title' || v === 'both') ? (v as string) : 'both';
             return mode;
         });
+        ipcMain.handle('load-dropped-file', async (_event, name: string, data: Buffer) => {
+            const payload = Buffer.isBuffer(data) ? data : Buffer.from(data);
+            const filePath = await writeDroppedFile(name, payload);
+            await loadCodebookFile(filePath);
+            return filePath;
+        });
     } catch { /* noop: handler may already be registered in some hot-reload flows */ }
 }
 
@@ -383,14 +441,19 @@ function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
             click: async () => {
                 const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
                     title: i18n.t('menu.file.loadtitle'),
-                    filters: [{ name: 'DDI XML file', extensions: ['xml'] }],
+                    filters: [
+                        {
+                            name: i18n.t('menu.file.loadfilter'),
+                            extensions: SUPPORTED_CODEBOOK_FILTERS,
+                        },
+                    ],
                     properties: ['openFile']
                 });
                 if (canceled || !filePaths || filePaths.length === 0) return;
-                try {
-                    const filePath = filePaths[0];
-                    await loadXmlFile(filePath);
-                } catch (e: any) {
+                    try {
+                        const filePath = filePaths[0];
+                        await loadCodebookFile(filePath);
+                    } catch (e: any) {
                     dialog.showErrorBox(
                         i18n.t('messages.load.failed'),
                         String((e && e.message) ? e.message : e)

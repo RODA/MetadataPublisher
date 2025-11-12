@@ -1,7 +1,8 @@
 {
   "menu.file": "Fichier",
-  "menu.file.load": "Charger un fichier DDI XML",
-  "menu.file.loadtitle": "Charger un fichier DDI XML",
+  "menu.file.load": "Charger un fichier de métadonnées",
+  "menu.file.loadtitle": "Charger un ensemble de données ou un fichier de métadonnées",
+  "menu.file.loadfilter": "Fichiers pris en charge (XML, SAV, POR, DTA, RDS, XPT, XLSX)",
 
   "menu.edit": "Édition",
   "menu.edit.undo": "Annuler",
@@ -24,9 +25,13 @@
   "tree.nametitles": "Noms et titres",
 
   "messages.load.failed": "Échec du chargement",
+  "messages.load.unsupported": "Format de fichier non pris en charge. Déposez un fichier DDI XML, SPSS (.sav), Stata (.dta), R (.rds), SAS (.xpt) ou Excel (.xlsx).",
   "messages.app.initializing": "Initialisation...",
 
   "page.main.title": "Metadata Publisher",
   "page.main.body": "Un outil pour documenter et publier des métadonnées utilisant la norme DDI Codebook.",
+  "page.main.drop.title": "Déposez ou sélectionnez un fichier de métadonnées",
+  "page.main.drop.body": "Faites glisser un fichier pris en charge ou utilisez Fichier > Charger pour éditer ses métadonnées.",
+  "page.main.drop.formats": "Formats pris en charge : XML, SPSS (.sav, .por), Stata (.dta), R (.rds), SAS (.xpt), Excel (.xlsx).",
   "page.main.loader": "Chargement..."
 }

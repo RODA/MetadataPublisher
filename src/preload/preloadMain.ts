@@ -196,6 +196,7 @@ function initTree() {
   if (!container) return;
   const metaArea = document.querySelector('.metadata-area') as HTMLElement | null;
   const metaContent = document.querySelector('.meta-content') as HTMLElement | null;
+  const dropTarget = metaArea;
   const topToolbar = document.getElementById('toolbar') as HTMLElement | null;
   // Slot inside top toolbar to host context controls
   let controlsSlot: HTMLElement | null = null;
@@ -274,6 +275,107 @@ function initTree() {
     selectedPath: [] as number[],
   };
 
+  const parseUriList = (raw: string | undefined): string | null => {
+    if (!raw) return null;
+    const lines = raw.split(/[\r\n]+/).map((line) => line.trim()).filter(Boolean);
+    const first = lines.find((line) => /^file:\/\//i.test(line));
+    if (!first) return null;
+    try {
+      const uri = new URL(first);
+      if (process.platform === 'win32') {
+        const pathname = uri.pathname?.replace(/^\//, '') ?? '';
+        return decodeURI(pathname.replace(/\//g, path.sep));
+      }
+      return decodeURI(uri.pathname);
+    } catch {
+      return null;
+    }
+  };
+
+  const sendFileToMain = async (file: File) => {
+    try {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      await ipcRenderer.invoke('load-dropped-file', file.name, buffer);
+    } catch (error) {
+      console.error('[Drop] failed to send file to main', error);
+    }
+  };
+
+  const dispatchFileLoad = async (files: FileList | null | undefined, event?: DragEvent) => {
+    console.log('[Drop] dispatchFileLoad called', files);
+    if (!files || files.length === 0) {
+      // try to infer from URI list if possible
+      const uriList = event?.dataTransfer?.getData('text/uri-list') || event?.dataTransfer?.getData('text/plain');
+      const fallbackPath = parseUriList(uriList);
+      console.log('[Drop] fallback uriList', uriList, 'parsed', fallbackPath);
+      if (fallbackPath) {
+        coms.sendTo('main', 'loadFile', fallbackPath);
+        return;
+      }
+      return;
+    }
+    const file = files[0];
+    const filePath = (file as File & { path?: string }).path;
+    console.log('[Drop] file keys', Object.keys(file), 'has path', 'path' in file);
+    console.log('[Drop] path descriptor', Object.getOwnPropertyDescriptor(file, 'path'));
+    console.log('[Drop] file from drop', filePath);
+    if (typeof filePath === 'string' && filePath) {
+      coms.sendTo('main', 'loadFile', filePath);
+      return;
+    }
+    await sendFileToMain(file);
+  };
+
+  let dragDepth = 0;
+  const setDragHighlight = (active: boolean) => {
+    if (!dropTarget) return;
+    if (active && !dropTarget.classList.contains('is-dragover')) {
+      dropTarget.classList.add('is-dragover');
+    } else if (!active && dropTarget.classList.contains('is-dragover')) {
+      dropTarget.classList.remove('is-dragover');
+    }
+  };
+
+  if (dropTarget) {
+
+      dropTarget.addEventListener('dragover', (event) => {
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+      });
+
+      dropTarget.addEventListener('dragenter', (event) => {
+        dragDepth += 1;
+        setDragHighlight(true);
+        event.preventDefault();
+      });
+
+      dropTarget.addEventListener('dragleave', (event) => {
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (dragDepth === 0) setDragHighlight(false);
+        event.preventDefault();
+      });
+      dropTarget.addEventListener('drop', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        dragDepth = 0;
+        setDragHighlight(false);
+        void dispatchFileLoad(event.dataTransfer?.files ?? null, event);
+      });
+  }
+
+  window.addEventListener('dragover', (event) => {
+    event.preventDefault();
+  });
+
+      window.addEventListener('drop', (event) => {
+        event.preventDefault();
+        dragDepth = 0;
+        setDragHighlight(false);
+        console.log('[Drop] window drop', event.target, event.dataTransfer);
+        console.log('[Drop] drop types', event.dataTransfer?.types);
+    void dispatchFileLoad(event.dataTransfer?.files ?? null, event);
+      });
+
   const render = (rootJson: unknown) => {
     if (!rootJson) return;
     state.lastPayload = rootJson as JsonValue;
@@ -288,7 +390,11 @@ function initTree() {
         console.log('[Labels] render() payload keys:', typeof state.lastPayload === 'object' && state.lastPayload ? Object.keys(state.lastPayload as any) : '(not object)');
       } catch {}
     }
-    if (!treeRoot) return;
+    if (!treeRoot) {
+      if (metaArea) metaArea.classList.remove('has-metadata');
+      return;
+    }
+    if (metaArea) metaArea.classList.add('has-metadata');
     state.treeRoot = treeRoot;
     if (DEBUG_LABELS) {
       try {
