@@ -26,7 +26,7 @@
   "messages.load.failed": "Încărcare eșuată",
   "messages.app.initializing": "Inițializare...",
 
-  "page.main.title": "Fereastra principală",
-  "page.main.body": "Acesta este un punct de pornire minimal. Folosește meniul pentru alte opțiuni.",
+  "page.main.title": "Metadata Publisher",
+  "page.main.body": "Un instrument pentru documentarea și publicarea (meta)datelor utilizând standardul DDI Codebook.",
   "page.main.loader": "Se încarcă..."
 }

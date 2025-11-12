@@ -26,7 +26,7 @@
   "messages.load.failed": "Échec du chargement",
   "messages.app.initializing": "Initialisation...",
 
-  "page.main.title": "Fenêtre principale",
-  "page.main.body": "Ceci est un point de départ minimal. Utilisez le menu pour d'autres options.",
+  "page.main.title": "Metadata Publisher",
+  "page.main.body": "Un outil pour documenter et publier des métadonnées utilisant la norme DDI Codebook.",
   "page.main.loader": "Chargement..."
 }
