@@ -24,6 +24,7 @@
   "tree.nametitles": "Nume și titluri",
 
   "messages.load.failed": "Încărcare eșuată",
+  "messages.app.initializing": "Inițializare...",
 
   "page.main.title": "Fereastra principală",
   "page.main.body": "Acesta este un punct de pornire minimal. Folosește meniul pentru alte opțiuni.",

@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [k: string]: JsonValue };
+export type DdiBundle = { tree: JsonValue; elements: JsonValue };
 
 type Meta = {
     signature: string;
@@ -12,7 +13,8 @@ type Meta = {
 };
 
 function cacheDir() {
-    return path.join(app.getPath('userData'), 'ddiTreeCache', 'v1');
+    // Bump cache version to ensure new bundle format (tree + elements)
+    return path.join(app.getPath('userData'), 'ddiTreeCache', 'v2');
 }
 
 function treePath() {
@@ -23,33 +25,41 @@ function metaPath() {
     return path.join(cacheDir(), 'meta.json');
 }
 
+function elementsPath() {
+    return path.join(cacheDir(), 'elements.json');
+}
+
 export function computeSignature(): string {
     const hash = crypto.createHash('sha256');
     try {
         hash.update(String(app.getVersion?.() ?? '0'));
     } catch {}
 
-    // Use same paths as in main.ts for the R assets
+    // Rebuild tree only when the DDI codebook builder changes
     try {
-        const meta = fs.readFileSync(path.join(__dirname, '../src/library/R/library.js.metadata'));
-        hash.update(meta);
-    } catch {}
-
-    try {
-        const data = fs.readFileSync(path.join(__dirname, '../src/library/R/library.data.gz'));
-        hash.update(data);
+        const rHelper = fs.readFileSync(path.join(__dirname, '../src/library/R/DDI_Codebook_2.6.R'));
+        hash.update(rHelper);
     } catch {}
 
     return hash.digest('hex');
 }
 
-function loadFromCache(expectedSig: string): JsonValue | null {
+function loadFromCache(expectedSig: string): JsonValue | DdiBundle | null {
     try {
         const metaRaw = fs.readFileSync(metaPath(), 'utf8');
         const meta = JSON.parse(metaRaw) as Meta;
         if (meta.signature !== expectedSig) return null;
         const raw = fs.readFileSync(treePath(), 'utf8');
         const parsed = JSON.parse(raw) as JsonValue;
+        // If elements.json exists, return a bundle
+        try {
+            const eraw = fs.readFileSync(elementsPath(), 'utf8');
+            const elements = JSON.parse(eraw) as JsonValue;
+            try { console.log(`[DDITreeCache] Loaded cached tree+elements from: ${cacheDir()}`); } catch {}
+            return { tree: parsed, elements } as DdiBundle;
+        } catch {
+            // no elements file – return only tree for backward compatibility
+        }
         try { console.log(`[DDITreeCache] Loaded cached tree from: ${treePath()}`); } catch {}
         return parsed;
     } catch {
@@ -57,14 +67,25 @@ function loadFromCache(expectedSig: string): JsonValue | null {
     }
 }
 
-function saveToCache(sig: string, tree: JsonValue) {
+function saveToCache(sig: string, payload: JsonValue | DdiBundle) {
     try {
         fs.mkdirSync(cacheDir(), { recursive: true });
-        fs.writeFileSync(treePath(), JSON.stringify(tree), 'utf8');
+        if (isBundle(payload)) {
+            fs.writeFileSync(treePath(), JSON.stringify((payload as DdiBundle).tree), 'utf8');
+            fs.writeFileSync(elementsPath(), JSON.stringify((payload as DdiBundle).elements), 'utf8');
+        } else {
+            fs.writeFileSync(treePath(), JSON.stringify(payload as JsonValue), 'utf8');
+            // Best-effort: if an old elements.json exists, leave it as-is
+        }
         const meta: Meta = { signature: sig, createdAt: new Date().toISOString() };
         fs.writeFileSync(metaPath(), JSON.stringify(meta, null, 2), 'utf8');
         try {
-            console.log(`[DDITreeCache] Saved tree to: ${treePath()}`);
+            if (isBundle(payload)) {
+                console.log(`[DDITreeCache] Saved tree to: ${treePath()}`);
+                console.log(`[DDITreeCache] Saved elements to: ${elementsPath()}`);
+            } else {
+                console.log(`[DDITreeCache] Saved tree to: ${treePath()}`);
+            }
             console.log(`[DDITreeCache] Wrote metadata to: ${metaPath()}`);
         } catch {}
     } catch {
@@ -72,7 +93,11 @@ function saveToCache(sig: string, tree: JsonValue) {
     }
 }
 
-export async function getOrBuildDDITree(buildFn: () => Promise<JsonValue>): Promise<JsonValue> {
+function isBundle(v: unknown): v is DdiBundle {
+    return !!v && typeof v === 'object' && 'tree' in (v as any) && 'elements' in (v as any);
+}
+
+export async function getOrBuildDDITree(buildFn: () => Promise<JsonValue | DdiBundle>): Promise<JsonValue | DdiBundle> {
     const sig = computeSignature();
     const cached = loadFromCache(sig);
     if (cached) return cached;

@@ -18,7 +18,8 @@ coms.on('removeCover', () => {
 });
 
 export {};
-let fullPathRendering = false;
+let FULL_PATH_RENDERING = false;
+let DEBUG_LABELS = false;
 
 // i18n: initialize with whatever main chose (will be synced shortly)
 try {
@@ -277,29 +278,23 @@ function initTree() {
     if (!rootJson) return;
     state.lastPayload = rootJson as JsonValue;
     let treeRoot: NormNode | null = null;
-    // Expect composite payload: { codeBook, elements }
-    if (state.lastPayload && typeof state.lastPayload === 'object' && !Array.isArray(state.lastPayload)) {
+    // Now the payload can be either the root codebook node itself or legacy wrapped
+    if (state.lastPayload && typeof state.lastPayload === 'object') {
       const obj = state.lastPayload as any;
-      const code = obj.codeBook || obj.Codebook || null;
-      if (code) {
-        treeRoot = code as NormNode;
-        if (obj.elements && typeof obj.elements === 'object') {
-          // Build a simple string index from incoming elements map
-          const idx: { [k: string]: string } = {};
-          for (const [k, v] of Object.entries(obj.elements as Record<string, unknown>)) {
-            if (typeof v === 'string') idx[normalizeName(k)] = v as string;
-            else if (v && typeof v === 'object') {
-              const t = (v as any).title || (v as any).Title || (v as any).label || (v as any).Label;
-              if (typeof t === 'string') idx[normalizeName(k)] = t as string;
-            }
-          }
-          state.elements = idx;
-          state.rawElements = obj.elements as RawElements;
-        }
-      }
+      treeRoot = (obj.codeBook || obj.Codebook || obj) as NormNode;
+    }
+    if (DEBUG_LABELS) {
+      try {
+        console.log('[Labels] render() payload keys:', typeof state.lastPayload === 'object' && state.lastPayload ? Object.keys(state.lastPayload as any) : '(not object)');
+      } catch {}
     }
     if (!treeRoot) return;
     state.treeRoot = treeRoot;
+    if (DEBUG_LABELS) {
+      try {
+        console.log('[Labels] render() mode=', state.mode, 'titles.size=', state.elements ? Object.keys(state.elements).length : 0, 'root=', treeRoot?.name);
+      } catch {}
+    }
     const treeData = normToTree(treeRoot, state.elements, state.mode, 'root', []);
     mountAriaTree(container, treeData, (nodeId, pathIdx) => {
       state.selectedId = nodeId;
@@ -315,18 +310,72 @@ function initTree() {
     if (mode === 'name' || mode === 'title' || mode === 'both') state.mode = mode;
   }).catch(() => {});
 
-  // 1) Try immediate fetch
-  ipcRenderer.invoke('get-dditree').then((tree) => {
-    if (tree) render(tree);
-  }).catch(() => {});
+  // 1) Try immediate fetch of the last loaded codebook
+  ipcRenderer.invoke('get-xmlcodebook').then((book) => { if (book) { if (DEBUG_LABELS) console.log('[Labels] got xmlcodebook'); render(book); } else { if (DEBUG_LABELS) console.log('[Labels] no xmlcodebook'); } }).catch((e) => { if (DEBUG_LABELS) console.log('[Labels] get-xmlcodebook error', e); });
+
+  // Fetch DDI elements map used for labeling
+  const applyElements = (elements: unknown) => {
+    if (DEBUG_LABELS) console.log('[Labels] elements type=', typeof elements);
+    if (!elements || typeof elements !== 'object') return;
+    const titles: { [k: string]: string } = {};
+    const rawFlat: { [k: string]: any } = {};
+
+    const getChildren = (obj: any): any[] => {
+      const c = obj?.children ?? obj?.Children ?? obj?.subelements ?? obj?.Subelements ?? obj?.subElements ?? obj?.elements ?? obj?.Elements;
+      if (!c) return [];
+      if (Array.isArray(c)) return c;
+      if (typeof c === 'object') return Object.entries(c).map(([k, v]) => ({ __name: k, ...((typeof v === 'object') ? v as any : { title: String(v) }) }));
+      return [];
+    };
+
+    const visitEntry = (name: string, meta: any) => {
+      const key = normalizeName(name);
+      if (meta && typeof meta === 'object') {
+        const t = meta.title ?? meta.Title ?? meta.label ?? meta.Label;
+        if (typeof t === 'string') titles[key] = String(t);
+        rawFlat[key] = meta;
+        const kids = getChildren(meta);
+        for (const child of kids) {
+          const childName = (child && typeof child === 'object' && '__name' in child) ? (child as any).__name : (child?.name || child?.Name || '');
+          if (childName) visitEntry(String(childName), child);
+        }
+      } else if (typeof meta === 'string') {
+        titles[key] = meta;
+      }
+    };
+
+    for (const [k, v] of Object.entries(elements as Record<string, unknown>)) visitEntry(String(k), v);
+
+    state.elements = titles;
+    state.rawElements = rawFlat as RawElements;
+    if (DEBUG_LABELS) {
+      const sampleKeys = Object.keys(titles).slice(0, 12);
+      console.log('[Labels] titles count=', Object.keys(titles).length, 'sample=', sampleKeys.map(k => `${k}=${titles[k]}`));
+    }
+    if (state.treeRoot) {
+      // Re-render tree labels with new elements map
+      const treeData = normToTree(state.treeRoot, state.elements, state.mode, 'root', []);
+      mountAriaTree(container, treeData, (nodeId, pathIdx) => {
+        state.selectedId = nodeId;
+        state.selectedPath = pathIdx ? [...pathIdx] : idToPath(nodeId);
+        renderMetadata();
+      }, state.selectedId);
+      renderMetadata();
+    }
+  };
+  if (DEBUG_LABELS) console.log('[Labels] fetching DDI elements...');
+  ipcRenderer.invoke('get-ddi-elements').then((elements) => applyElements(elements)).catch(() => {});
+  // Also react to a broadcast once main finishes boot and computes elements
+  coms.on('ddi-elements', (elements: unknown) => applyElements(elements));
 
   // 2) Also listen for a later broadcast
-  coms.on('dditree', (tree: unknown) => render(tree));
+  coms.on('xmlcodebook', (book: unknown) => render(book));
 
   // React to Tree Label Mode changes from Settings menu
   coms.on('treeLabelModeChanged', (mode: unknown) => {
     const m = String(mode);
     if (m === 'name' || m === 'title' || m === 'both') {
+      if (DEBUG_LABELS) console.log('[Labels] treeLabelModeChanged ->', m);
       state.mode = m;
       if (state.lastPayload) render(state.lastPayload);
     }
@@ -348,6 +397,9 @@ function initTree() {
       return title ? `${n}: ${title}` : n;
     };
 
+    // Helper: display-friendly attribute name mapping
+    const displayAttr = (k: string): string => (k === 'xmlang' ? 'xml:lang' : k);
+
     // Build path tokens after 'root'
     const keyPath = state.selectedPath.length ? [...state.selectedPath] : idToPath(state.selectedId);
     const normRoot = state.treeRoot;
@@ -362,7 +414,7 @@ function initTree() {
       const title = document.createElement('h1');
       const displayPath = namePath.length > 1 ? namePath.slice(1) : namePath;
       const own = displayPath[displayPath.length - 1] || '';
-      title.textContent = fullPathRendering
+      title.textContent = FULL_PATH_RENDERING
         ? displayPath.map(makeLabel).join(' / ')
         : makeLabel(own);
       title.style.margin = '12px';
@@ -425,7 +477,7 @@ function initTree() {
         table.className = 'form-grid';
         for (const [ak, av] of Object.entries(node.attributes)) {
           const lab = document.createElement('div');
-          lab.textContent = String(ak);
+          lab.textContent = displayAttr(String(ak));
           lab.className = 'form-label';
           const inp = document.createElement('input'); (inp as HTMLInputElement).type = 'text';
           (inp as HTMLInputElement).className = 'form-control';
@@ -536,7 +588,7 @@ function initTree() {
           grid.className = 'form-grid';
           for (const [ak, av] of Object.entries(n.attributes)) {
             const lab = document.createElement('div');
-            lab.textContent = String(ak);
+            lab.textContent = displayAttr(String(ak));
             lab.className = 'form-label';
             const inp = document.createElement('input');
             (inp as HTMLInputElement).type = 'text';
@@ -581,7 +633,7 @@ function initTree() {
           const isLeafNode = !n.children || n.children.length === 0;
           const fullPath = pathNames.map(makeLabel).join(' / ');
           const ownLabel = makeLabel(pathNames[pathNames.length - 1]);
-          heading.textContent = fullPathRendering ? fullPath : ownLabel;
+          heading.textContent = FULL_PATH_RENDERING ? fullPath : ownLabel;
           heading.style.margin = '18px 0 8px 0';
           section.appendChild(heading);
 

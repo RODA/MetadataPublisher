@@ -108,3 +108,45 @@ normalize_codebook <- function(cb) {
     node$children <- normalize_children(cb)
     node
 }
+
+make_DDI_tree <- function(root = "codeBook") {
+    DDIC <- get("DDIC", envir = cacheEnv)
+
+    if (!is.list(DDIC) || is.null(DDIC[[root]])) {
+        admisc::stopError(sprintf("Root element '%s' not found in DDIC.", root))
+    }
+
+    # Build a uniform node: list(name = <element>, children = <list-of-nodes>)
+    build_node <- function(name, visited) {
+        spec <- DDIC[[name]]
+        ch <- spec$children
+
+        child_names <- NULL
+        if (!is.null(ch) && length(ch) > 0) {
+            child_names <- unique(unlist(ch, use.names = FALSE))
+        }
+
+        # Build children nodes, skipping visited and unknown elements
+        children <- list()
+        if (!is.null(child_names) && length(child_names) > 0) {
+            for (cn in child_names) {
+                if (cn %in% visited || is.null(DDIC[[cn]])) {
+                    next
+                }
+                node <- build_node(cn, c(visited, name))
+                if (!is.null(node)) {
+                    children[[length(children) + 1]] <- node
+                }
+            }
+        }
+
+        if (length(children) == 0) {
+            return(list(name = name, title = spec$title))
+        } else {
+            return(list(name = name, title = spec$title, children = children))
+        }
+    }
+
+    # Return the node rooted at `root`
+    build_node(root, visited = character())
+}

@@ -24,6 +24,7 @@
   "tree.nametitles": "Noms et titres",
 
   "messages.load.failed": "Échec du chargement",
+  "messages.app.initializing": "Initialisation...",
 
   "page.main.title": "Fenêtre principale",
   "page.main.body": "Ceci est un point de départ minimal. Utilisez le menu pour d'autres options.",

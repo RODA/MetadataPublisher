@@ -10,13 +10,22 @@ import { i18n } from './i18n';
 import { utils } from './library/utils';
 import { settings } from './modules/settings';
 import { MountArgs } from './interfaces/main';
-import { getOrBuildDDITree, JsonValue } from './modules/dditree';
+import { getOrBuildDDITree, JsonValue, DdiBundle } from './modules/dditree';
 
 app.setName('MetadataPublisher');
+
+// Static DDI structure (template)
 let dditree: JsonValue | null = null;
-let ddiElements: any | null = null; // elements map from cached tree.json
+
+// Elements map associated with the static DDI structure
+let ddielements: any | null = null;
+
+// Mutable currently loaded codebook (from user XML)
+let loadedCodebook: JsonValue | null = null;
+
 let mainWindow: BrowserWindow;
 const webR = new WebR({ interactive: false });
+let booting = true; // Block UI until R is ready and initial data loaded
 
 const windowid: { [key: string]: number } = {
     mainWindow: 1,
@@ -37,28 +46,21 @@ async function loadXmlViaR(hostFilePath: string) {
     await mount({ what: dir, where: '/hostfile' });
 
     const rPath = `/hostfile/${base}`;
-    mainWindow.webContents.send(
-        'consolog',
-        `codeBook <- getCodebook("${utils.escapeForR(rPath)}")`
-    );
+    // mainWindow.webContents.send(
+    //     'consolog',
+    //     `codeBook <- getCodebook("${utils.escapeForR(rPath)}")`
+    // );
 
     await webR.evalRVoid(`codeBook <- getCodebook("${utils.escapeForR(rPath)}")`);
 
-    const getCodebookFromJSON = 'jsonlite::toJSON(' +
-        'normalize_codebook(codeBook), ' +
-        'auto_unbox = TRUE, null = "null")';
+    const getCodebookFromJSON = 'jsonlite::toJSON(normalize_codebook(codeBook), auto_unbox = TRUE)';
 
     const response = await webR.evalRString(getCodebookFromJSON);
-    const codeBookOnly = JSON.parse(response) as JsonValue;
-    // Combine freshly loaded codebook with cached elements map so renderer can label nodes
-    dditree = { codeBook: codeBookOnly, elements: ddiElements } as unknown as JsonValue;
+    loadedCodebook = JSON.parse(response) as JsonValue;
 
-    // Log to console panel, if any
-    mainWindow.webContents.send('consolog', dditree);
-
-    // Set as current tree and send to current window
+    // Set as current document and send to current window
     if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('dditree', dditree);
+        mainWindow.webContents.send('xmlcodebook', loadedCodebook);
     }
 
     // Send message to renderer to clear loader
@@ -129,35 +131,53 @@ async function initWebR() {
             '/my-library'
         );
 
+        await mount({ what: appRDir, where: '/app' });
+        await webR.evalRVoid('source("/app/DDI_Codebook_2.6.R")');
+        await webR.evalRVoid('source("/app/utils.R")');
+
         await webR.evalRVoid(`.libPaths(c(.libPaths(), "/my-library"))`);
         await webR.evalRVoid(`library(DDIwR)`);
 
         // Source local R helper(s) after R initializes
         try {
-            await mount({ what: appRDir, where: '/app' });
-            // Attempt to source local utils function for testing overrides
-            try {
-                await webR.evalRVoid('source("/app/utils.R")');
-            } catch { /* noop: sourcing errors should not break app */ }
             // const startTime = Date.now();
-            const tree = await getOrBuildDDITree(async () => {
-                const response = await webR.evalRString(
-                    'jsonlite::toJSON(makeDDITree(), auto_unbox = TRUE, null = "null", pretty = TRUE)'
+            const bundle = await (getOrBuildDDITree(async () => {
+                const tree = await webR.evalRString(
+                    'jsonlite::toJSON(make_DDI_tree(), auto_unbox = TRUE)'
                 );
-                return JSON.parse(response) as JsonValue;
-            });
+
+                const elements = await webR.evalRString(
+                    'jsonlite::toJSON(get("DDIC", envir = cacheEnv), auto_unbox = TRUE)'
+                );
+
+                return ({
+                    tree: JSON.parse(tree) as JsonValue,
+                    elements: JSON.parse(elements) as JsonValue
+                }) as DdiBundle;
+            })) as DdiBundle;
 
             // console.log(`Tree loaded in ${(Date.now() - startTime)/1000}s`);
-
-            dditree = tree;
+            dditree = bundle.tree;
+            ddielements = bundle.elements;
+            // Notify renderers elements are ready for labeling
             try {
-                // Keep only the elements map handy for later merges
-                const anyTree: any = tree as any;
-                ddiElements = anyTree && typeof anyTree === 'object' ? anyTree.elements || null : null;
-            } catch { ddiElements = null; }
+                BrowserWindow.getAllWindows().forEach((win) => {
+                    if (!win.isDestroyed()) win.webContents.send('ddi-elements', ddielements);
+                });
+            } catch { /* noop */ }
         } catch (e) {
             // Non-fatal in case the source file is missing in some environments
         }
+
+        // Boot finished successfully: enable UI and remove cover
+        try {
+            booting = false;
+            const mainMenu = Menu.buildFromTemplate(buildMainMenuTemplate());
+            Menu.setApplicationMenu(mainMenu);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('removeCover');
+            }
+        } catch { /* noop */ }
     } catch (error) {
         throw error;
     }
@@ -188,7 +208,11 @@ function createMainWindow() {
     try {
         mainWindow.webContents.on('did-finish-load', () => {
             try {
-                mainWindow.webContents.send('message-from-main-i18nLanguageChanged', i18n.getLocale());
+                mainWindow.webContents.send('i18nLanguageChanged', i18n.getLocale());
+                // Add a startup cover while booting to block interaction
+                if (booting) {
+                    try { mainWindow.webContents.send('addCover', i18n.t('messages.app.initializing')); } catch { /* noop */ }
+                }
             } catch { /* noop */ }
         });
     } catch { /* noop */ }
@@ -239,9 +263,10 @@ function setupIPC() {
         }
     });
 
-    // Provide fetch endpoint for late windows to retrieve current DDI tree
+    // Provide fetch endpoint for late windows to retrieve current loaded codebook
     try {
-        ipcMain.handle('get-dditree', () => dditree);
+        ipcMain.handle('get-xmlcodebook', () => loadedCodebook);
+        ipcMain.handle('get-ddi-elements', () => ddielements);
         // Settings fetchers
         ipcMain.handle('get-tree-label-mode', () => {
             const v = settings.get('treeLabelMode');
@@ -291,8 +316,9 @@ function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
     };
 
     const template: MenuItemConstructorOptions[] = [];
-    template.push({ label: i18n.t('menu.file'), submenu: fileSubmenu });
-    template.push(editMenu);
+    template.push({ label: i18n.t('menu.file'), submenu: fileSubmenu, enabled: !booting });
+    // Disable the whole Edit menu while booting to avoid accelerators
+    template.push({ ...editMenu, enabled: !booting });
 
     // Language submenu (simple demo, lists available locales)
     const langs = i18n.availableLocales(__dirname);
@@ -315,7 +341,7 @@ function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
         },
     }));
 
-    template.push({ label: i18n.t('menu.language'), submenu: langSubmenu });
+    template.push({ label: i18n.t('menu.language'), submenu: langSubmenu, enabled: !booting });
 
     // Settings menu: Tree label mode
     const currentLabelMode = (() => {
@@ -342,7 +368,7 @@ function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
     const settingsSubmenu: MenuItemConstructorOptions[] = [
         { label: i18n.t('tree.labels'), submenu: treeLabelsSubmenu },
     ];
-    template.push({ label: i18n.t('menu.settings'), submenu: settingsSubmenu });
+    template.push({ label: i18n.t('menu.settings'), submenu: settingsSubmenu, enabled: !booting });
     return template;
 }
 

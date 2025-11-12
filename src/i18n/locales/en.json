@@ -23,8 +23,8 @@
   "tree.titles": "Titles",
   "tree.nametitles": "Names and titles",
 
-
   "messages.load.failed": "Load failed",
+  "messages.app.initializing": "Initializing...",
 
   "page.main.title": "Main Window",
   "page.main.body": "This is a minimal starting point. Use the menu for other options.",
