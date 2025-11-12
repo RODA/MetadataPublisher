@@ -675,11 +675,17 @@ function mountAriaTree(container: HTMLElement, data: TreeNode, onSelect?: (id: s
     li.appendChild(row);
 
     // Mouse interactions
-    row.addEventListener('click', (e) => {
+    // 1) Clicking the disclosure arrow only expands/collapses, no metadata change
+    disclosure.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (hasChildren) { toggle(node.id); rerender(); }
+    });
+
+    // 2) Clicking the label selects the node and updates metadata, without toggling
+    label.addEventListener('click', (e) => {
       e.stopPropagation();
       focusedId = node.id;
       selectedId = node.id;
-      if (hasChildren) toggle(node.id);
       rerender();
       try { onSelect && onSelect(node.id, node.pathIdx); } catch { /* noop */ }
     });
