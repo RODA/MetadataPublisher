@@ -153,8 +153,15 @@ type JsonValue = JsonPrimitive | JsonValue[] | { [k: string]: JsonValue };
 type TreeNode = {
   id: string;
   label: string;
-  path: string[]; // array of actual object keys from codeBook root
+  pathIdx: number[];
   children?: TreeNode[];
+};
+
+type NormNode = {
+  name: string;
+  value?: string | null;
+  attributes?: Record<string, string> | null;
+  children?: NormNode[];
 };
 
 type ElementsIndex = { [k: string]: string } | undefined;
@@ -166,67 +173,20 @@ function normalizeName(name: string): string {
   return noNs.replace(/\.\d+$/u, '');
 }
 
-function jsonToTree(
-  value: JsonValue,
+function normToTree(
+  node: NormNode,
   elements: ElementsIndex,
   mode: LabelMode,
   idPrefix = 'root',
-  keyLabel = 'root',
-  pathKeys: string[] = [],
+  pathIdx: number[] = [],
 ): TreeNode {
-  const lookupTitle = (name: string): string | undefined => {
-    const norm = normalizeName(name);
-    return elements?.[norm];
-  };
-
-  const compose = (name: string): string => {
-    const title = lookupTitle(name);
-    if (mode === 'name') return name;
-    if (mode === 'title') return title || name;
-    return title ? `${name}: ${title}` : name;
-  };
-  // Arrays represent unnamed children -> treat as values: don't render items as tree nodes
-  if (Array.isArray(value)) {
-    return { id: idPrefix, label: compose(keyLabel), path: pathKeys };
-  }
-  if (value !== null && typeof value === 'object') {
-    // Object: hide `.extra`, avoid grouping wrappers, display repeated siblings individually
-    const obj = value as { [k: string]: JsonValue };
-    const label = compose(keyLabel);
-    const entries = Object.entries(obj).filter(([k]) => k !== '.extra' && k !== '.attributes');
-
-    // If object only wraps text (e.g., {".text":"..."} or {"text":"..."}), treat as leaf
-    const wrapperSet = new Set(['.text', 'text', '#text', 'value']);
-    const nonWrapper = entries.filter(([k]) => !wrapperSet.has(k));
-    if (entries.length > 0 && nonWrapper.length === 0) {
-      return { id: idPrefix, label, path: pathKeys };
-    }
-
-    // If there is a single unnamed key (""), treat as leaf value (common from R JSON)
-    if (entries.length === 1) {
-      const [ek, ev] = entries[0];
-      if (ek === '' && (ev === null || typeof ev === 'string' || typeof ev === 'number' || typeof ev === 'boolean')) {
-        return { id: idPrefix, label, path: pathKeys };
-      }
-    }
-
-    // If keys are numeric-only, treat as unnamed values -> collapse to leaf
-    const numericKeyed = entries.length > 0 && entries.every(([k]) => /^\d+$/.test(k));
-    if (numericKeyed) {
-      // Treat as values: do not show actual values in the tree
-      return { id: idPrefix, label, path: pathKeys };
-    }
-
-    const stripSuffix = (k: string) => k.replace(/\.\d+$/u, '');
-    const children: TreeNode[] = entries.map(([k, v]) => {
-      const base = stripSuffix(k);
-      // Child nodes keep the element name (base) as label; no grouping wrapper
-      return jsonToTree(v, elements, mode, `${idPrefix}.${k}`, base, pathKeys.concat([k]));
-    });
-    return { id: idPrefix, label, path: pathKeys, children };
-  }
-  // Primitive leaf -> values are not displayed in the tree
-  return { id: idPrefix, label: compose(keyLabel), path: pathKeys };
+  const name = node.name || 'node';
+  const title = elements?.[normalizeName(name)];
+  const label = mode === 'name' ? name : mode === 'title' ? (title || name) : (title ? `${name}: ${title}` : name);
+  const kids = Array.isArray(node.children) ? node.children : [];
+  if (!kids.length) return { id: idPrefix, label, pathIdx };
+  const children = kids.map((child, idx) => normToTree(child, elements, mode, `${idPrefix}.${idx}`, pathIdx.concat([idx])));
+  return { id: idPrefix, label, pathIdx, children };
 }
 
 function initTree() {
@@ -246,28 +206,82 @@ function initTree() {
     }
   }
 
+  function resolveNormPath(root: NormNode, path: number[]): { parent: NormNode | null; index: number; node: NormNode; namePath: string[] } | null {
+    let parent: NormNode | null = null;
+    let cur: NormNode = root;
+    const names: string[] = [cur.name || 'root'];
+    if (!path.length) return { parent: null, index: -1, node: cur, namePath: names };
+    for (let i = 0; i < path.length; i++) {
+      parent = cur;
+      const arr = Array.isArray(parent.children) ? parent.children : [];
+      const idx = path[i];
+      if (idx < 0 || idx >= arr.length) return null;
+      cur = arr[idx];
+      names.push(cur.name || `#${idx}`);
+    }
+    return { parent, index: path[path.length - 1], node: cur, namePath: names };
+  }
+
+  const idToPath = (id: string | null): number[] => {
+    if (!id) return [];
+    const parts = id.split('.').slice(1);
+    const out: number[] = [];
+    for (const p of parts) {
+      const n = parseInt(p, 10);
+      if (!Number.isNaN(n)) out.push(n);
+    }
+    return out;
+  };
+
+  const buildIdFromPath = (path: number[]): string => (path.length ? `root.${path.join('.')}` : 'root');
+
+  function siblingOrder(parent: any, base: string): number[] {
+    if (!parent || !Array.isArray(parent.children)) return [];
+    const out: number[] = [];
+    for (let i = 0; i < parent.children.length; i++) {
+      if (normalizeName(String(parent.children[i]?.name)) === normalizeName(base)) out.push(i);
+    }
+    return out;
+  }
+
+  function swapChildren(parent: any, a: number, b: number) {
+    if (!parent || !parent.children) return;
+    const tmp = parent.children[a]; parent.children[a] = parent.children[b]; parent.children[b] = tmp;
+  }
+
+  function createNormElement(base: string): any {
+    const elMeta = (state.rawElements as any)?.[base] ?? (state.rawElements as any)?.[normalizeName(base)];
+    const hasChildren = (() => {
+      if (!elMeta || typeof elMeta !== 'object') return false;
+      const c = (elMeta as any).children ?? (elMeta as any).subelements ?? (elMeta as any).elements;
+      if (!c) return false;
+      if (Array.isArray(c)) return c.length > 0;
+      if (typeof c === 'object') return Object.keys(c).length > 0;
+      return Boolean(c);
+    })();
+    return hasChildren ? { name: base, children: [] } : { name: base, value: '' };
+  }
+
   const state = {
     mode: 'both' as LabelMode,
     elements: undefined as ElementsIndex,
     rawElements: undefined as RawElements,
     lastPayload: null as JsonValue | null,
-    treeRoot: null as JsonValue | null,
-    selectedId: null as string | null,
-    selectedPath: null as string[] | null,
+    treeRoot: null as NormNode | null,
+    selectedId: 'root',
+    selectedPath: [] as number[],
   };
 
   const render = (rootJson: unknown) => {
     if (!rootJson) return;
     state.lastPayload = rootJson as JsonValue;
-    let treeRoot: JsonValue = state.lastPayload;
-    let rootLabel = 'root';
+    let treeRoot: NormNode | null = null;
     // Expect composite payload: { codeBook, elements }
     if (state.lastPayload && typeof state.lastPayload === 'object' && !Array.isArray(state.lastPayload)) {
       const obj = state.lastPayload as any;
       const code = obj.codeBook || obj.Codebook || null;
       if (code) {
-        treeRoot = code as JsonValue;
-        rootLabel = 'codeBook';
+        treeRoot = code as NormNode;
         if (obj.elements && typeof obj.elements === 'object') {
           // Build a simple string index from incoming elements map
           const idx: { [k: string]: string } = {};
@@ -283,13 +297,14 @@ function initTree() {
         }
       }
     }
+    if (!treeRoot) return;
     state.treeRoot = treeRoot;
-    const treeData = jsonToTree(treeRoot, state.elements, state.mode, 'root', rootLabel, []);
-    mountAriaTree(container, treeData, (nodeId, path) => {
+    const treeData = normToTree(treeRoot, state.elements, state.mode, 'root', []);
+    mountAriaTree(container, treeData, (nodeId, pathIdx) => {
       state.selectedId = nodeId;
-      state.selectedPath = path || null;
+      state.selectedPath = pathIdx ? [...pathIdx] : idToPath(nodeId);
       renderMetadata();
-    }, state.selectedId || undefined);
+    }, state.selectedId);
     renderMetadata();
   };
 
@@ -325,219 +340,178 @@ function initTree() {
     if (!state.treeRoot || !state.selectedId) return;
 
     // Build path tokens after 'root'
-    let keyPath: string[];
-    if (state.selectedPath && state.selectedPath.length) {
-      keyPath = state.selectedPath.slice();
-    } else {
-      const id = state.selectedId;
-      const parts = id.split('.');
-      if (parts[0] !== 'root') return;
-      keyPath = parts.slice(1);
-    }
+    const keyPath = state.selectedPath.length ? [...state.selectedPath] : idToPath(state.selectedId);
+    const normRoot = state.treeRoot;
+    if (normRoot) {
+      const resolved = resolveNormPath(normRoot, keyPath);
+      if (!resolved) return;
+      const { parent, index, node, namePath } = resolved;
+      // console.log('[Tree] render node', { path: keyPath, name: node.name, value: node.value });
+      if (!node) return;
 
-    // Follow path to get parent and key
-    const res = getParentAndKey(state.treeRoot as any, keyPath);
-    if (!res) return;
-    const { parent, key, value } = res;
+      // Title
+      const title = document.createElement('h1');
+      const displayPath = namePath.length > 1 ? namePath.slice(1) : namePath;
+      title.textContent = displayPath.join(' / ');
+      title.style.margin = '12px';
+      metaContent.appendChild(title);
 
-    // Title and path
-    const title = document.createElement('h1');
-    title.textContent = keyPath.join(' / ');
-    title.style.margin = '12px';
-    metaContent.appendChild(title);
+      const controls = document.createElement('div');
+      controls.style.margin = '0 12px 12px 12px';
 
-    const controls = document.createElement('div');
-    controls.style.margin = '0 12px 12px 12px';
+      const isLeaf = !node.children || node.children.length === 0;
+      const hasValue = node.value !== undefined && node.value !== null;
 
-    // Editor for primitive values OR common wrapped-text schemas (e.g., { ".text": "..." })
-    let editableObj: any = null;
-    let editableProp: string | null = null;
-    let currentStr = '';
-    if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-      editableObj = parent; editableProp = key; currentStr = value === null ? '' : String(value);
-    } else if (value && typeof value === 'object') {
-      const v: any = value;
-      // Common wrapped text fields
-      let wrappedProp = typeof v['.text'] === 'string' ? '.text'
-        : (typeof v['text'] === 'string' ? 'text'
-        : (typeof v['#text'] === 'string' ? '#text'
-        : (typeof v['value'] === 'string' ? 'value' : null)));
-      // Numeric-keyed single value (e.g., {"1":"..."})
-      if (!wrappedProp) {
-        const entries = Object.entries(v).filter(([kk]) => kk !== '.attributes' && kk !== '.extra');
-        const numericOnly = entries.length === 1 && /^\d+$/.test(entries[0][0]) &&
-          (typeof entries[0][1] === 'string' || typeof entries[0][1] === 'number' || typeof entries[0][1] === 'boolean');
-        if (numericOnly) {
-          wrappedProp = entries[0][0];
-        } else if (entries.length === 1 && typeof entries[0][1] === 'string') {
-          wrappedProp = entries[0][0];
-        } else if (entries.length === 1 && /^\d+$/.test(entries[0][0]) && entries[0][1] && typeof entries[0][1] === 'object') {
-          // Numeric-keyed object that itself wraps text (e.g., {"1": {"#text": "..."}})
-          const inner: any = entries[0][1];
-          const innerKey = typeof inner['.text'] === 'string' ? '.text'
-            : (typeof inner['text'] === 'string' ? 'text'
-            : (typeof inner['#text'] === 'string' ? '#text'
-            : (typeof inner['value'] === 'string' ? 'value' : null)));
-          if (innerKey) {
-            editableObj = inner; editableProp = innerKey; currentStr = String(inner[innerKey]);
-          }
+      // Leaf value editor
+      if (isLeaf && hasValue) {
+        const label = document.createElement('div');
+        label.textContent = 'Value';
+        label.style.marginBottom = '6px';
+        controls.appendChild(label);
+
+        const rawValue = node.value === null || node.value === undefined ? '' : String(node.value);
+
+        // Trim leading/trailing whitespace
+        const currentStr = rawValue.replace(/^\s+/, '').replace(/\s+$/, '');
+
+        const needsTextarea = currentStr.length > 60 || /\r|\n/.test(currentStr);
+        const input = document.createElement(needsTextarea ? 'textarea' : 'input');
+        if (input instanceof HTMLTextAreaElement) {
+          input.rows = 7;
+          input.style.width = '96%';
         } else {
-          // Special case: unnamed key "" (value) possibly next to .extra
-          const emptyKey = entries.find(([kk, vv]) => kk === '' && (vv === null || typeof vv === 'string' || typeof vv === 'number' || typeof vv === 'boolean'));
-          if (emptyKey) {
-            wrappedProp = '';
-          }
+          (input as HTMLInputElement).type = 'text';
+          (input as HTMLInputElement).style.width = '96%';
         }
-      }
-      if (wrappedProp) {
-        editableObj = v; editableProp = wrappedProp; currentStr = String(v[wrappedProp]);
-      }
-    }
-
-    if (editableObj && editableProp) {
-      const label = document.createElement('div');
-      label.textContent = 'Value';
-      label.style.marginBottom = '6px';
-      controls.appendChild(label);
-
-      const input = document.createElement(currentStr.length > 60 ? 'textarea' : 'input');
-      if (input instanceof HTMLTextAreaElement) {
-        input.rows = 4;
-        input.style.width = '96%';
+        (input as HTMLInputElement | HTMLTextAreaElement).value = currentStr;
+        const apply = () => {
+          const newVal = (input as HTMLInputElement | HTMLTextAreaElement).value;
+          node.value = newVal.replace(/^\s+/, '').replace(/\s+$/, '');
+        };
+        input.addEventListener('change', apply);
+        input.addEventListener('blur', apply);
+        controls.appendChild(input);
+      } else if (isLeaf) {
+        const info = document.createElement('div');
+        info.textContent = 'This element has no text value.';
+        controls.appendChild(info);
       } else {
-        (input as HTMLInputElement).type = 'text';
-        (input as HTMLInputElement).style.width = '96%';
+        const info = document.createElement('div');
+        info.textContent = 'This node is a parent (not directly editable).';
+        controls.appendChild(info);
       }
-      (input as HTMLInputElement | HTMLTextAreaElement).value = currentStr;
-      const apply = () => {
-        const newVal = (input as HTMLInputElement | HTMLTextAreaElement).value;
-        editableObj![editableProp!] = newVal;
-      };
-      input.addEventListener('change', apply);
-      input.addEventListener('blur', apply);
-      controls.appendChild(input);
-    } else {
-      const info = document.createElement('div');
-      info.textContent = 'This node is a container (not directly editable).';
-      controls.appendChild(info);
+
+      // Attributes editor
+      if (node.attributes && typeof node.attributes === 'object') {
+        const attrsTitle = document.createElement('div');
+        attrsTitle.textContent = 'Attributes';
+        attrsTitle.style.margin = '12px 0 6px 0';
+        attrsTitle.style.fontWeight = '600';
+        controls.appendChild(attrsTitle);
+        const table = document.createElement('div');
+        table.style.display = 'grid';
+        table.style.gridTemplateColumns = '160px 1fr';
+        table.style.gap = '6px 8px';
+        for (const [ak, av] of Object.entries(node.attributes)) {
+          const lab = document.createElement('div'); lab.textContent = String(ak);
+          const inp = document.createElement('input'); (inp as HTMLInputElement).type = 'text';
+          (inp as HTMLInputElement).value = av === null || av === undefined ? '' : String(av);
+          (inp as HTMLInputElement).addEventListener('change', () => { (node.attributes as any)[ak] = (inp as HTMLInputElement).value; });
+          table.appendChild(lab); table.appendChild(inp);
+        }
+        controls.appendChild(table);
+      }
+
+      const baseName = normalizeName(String(node.name || ''));
+      const repeatable = isRepeatable(baseName);
+      const addBtn = document.createElement('button'); addBtn.title = 'Add sibling'; addBtn.textContent = '+'; addBtn.disabled = !repeatable;
+      addBtn.addEventListener('click', () => {
+        if (!repeatable || !parent) return;
+        parent.children = Array.isArray(parent.children) ? parent.children : [];
+        const insertAt = typeof index === 'number' ? index + 1 : parent.children.length;
+        parent.children.splice(insertAt, 0, createNormElement(baseName));
+        console.log('[Tree] add sibling', {
+          parentName: parent.name,
+          baseName,
+          insertAt,
+          children: parent.children?.map((child, idx) => ({ idx, name: child.name, value: child.value })) ?? [],
+        });
+        const treeData = normToTree(state.treeRoot as NormNode, state.elements, state.mode, 'root', []);
+        const newSelectedPath = keyPath.slice(0, -1).concat([insertAt]);
+        const newSelectedId = buildIdFromPath(newSelectedPath);
+        state.selectedPath = newSelectedPath;
+        state.selectedId = newSelectedId;
+        mountAriaTree(container!, treeData, (nid, pathIdx) => {
+          state.selectedId = nid;
+          state.selectedPath = pathIdx ? [...pathIdx] : idToPath(nid);
+          renderMetadata();
+        }, newSelectedId);
+        renderMetadata();
+      });
+      controlsSlot.appendChild(addBtn);
+
+      const delBtn = document.createElement('button'); delBtn.title = 'Delete sibling'; delBtn.textContent = '−';
+      delBtn.addEventListener('click', () => {
+        if (!parent || typeof index !== 'number') return;
+        parent.children?.splice(index, 1);
+        const treeData = normToTree(state.treeRoot as NormNode, state.elements, state.mode, 'root', []);
+        const childCount = parent.children?.length ?? 0;
+        let nextPath: number[];
+        if (childCount === 0) {
+          nextPath = keyPath.slice(0, -1);
+        } else {
+          const nextIdx = Math.min(index, childCount - 1);
+          nextPath = keyPath.slice(0, -1).concat([nextIdx]);
+        }
+        state.selectedPath = nextPath;
+        state.selectedId = buildIdFromPath(nextPath);
+        mountAriaTree(container!, treeData, (nid, pathIdx) => {
+          state.selectedId = nid;
+          state.selectedPath = pathIdx ? [...pathIdx] : idToPath(nid);
+          renderMetadata();
+        }, state.selectedId);
+        renderMetadata();
+      });
+      controlsSlot.appendChild(delBtn);
+
+      const upBtn = document.createElement('button'); upBtn.title = 'Move up'; upBtn.textContent = '↑';
+      const dnBtn = document.createElement('button'); dnBtn.title = 'Move down'; dnBtn.textContent = '↓';
+      const order = siblingOrder(parent, baseName);
+      const idxNow = order.indexOf(typeof index === 'number' ? index : -1);
+      upBtn.disabled = !repeatable || idxNow <= 0; dnBtn.disabled = !repeatable || idxNow === -1 || idxNow >= order.length - 1;
+      upBtn.addEventListener('click', () => {
+        const order = siblingOrder(parent, baseName); const i = order.indexOf(index);
+        if (i > 0) { const a = order[i - 1], b = order[i]; swapChildren(parent, a, b);
+          const treeData = normToTree(state.treeRoot as NormNode, state.elements, state.mode, 'root', []);
+          const p = keyPath.slice(0, -1).concat([a]); state.selectedPath = p; state.selectedId = buildIdFromPath(p);
+          mountAriaTree(container!, treeData, (nid, pathIdx) => {
+            state.selectedId = nid;
+            state.selectedPath = pathIdx ? [...pathIdx] : idToPath(nid);
+            renderMetadata();
+          }, state.selectedId); renderMetadata(); }
+      });
+      dnBtn.addEventListener('click', () => {
+        const order = siblingOrder(parent, baseName); const i = order.indexOf(index);
+        if (i !== -1 && i < order.length - 1) { const a = order[i], b = order[i + 1]; swapChildren(parent, a, b);
+          const treeData = normToTree(state.treeRoot as NormNode, state.elements, state.mode, 'root', []);
+          const p = keyPath.slice(0, -1).concat([b]); state.selectedPath = p; state.selectedId = buildIdFromPath(p);
+          mountAriaTree(container!, treeData, (nid, pathIdx) => {
+            state.selectedId = nid;
+            state.selectedPath = pathIdx ? [...pathIdx] : idToPath(nid);
+            renderMetadata();
+          }, state.selectedId); renderMetadata(); }
+      });
+      controlsSlot.appendChild(upBtn); controlsSlot.appendChild(dnBtn);
+
+      metaContent.appendChild(controls);
+      return; // handled normalized path
     }
-
-    // Add sibling if repeatable
-    const baseName = normalizeName(key);
-    const repeatable = isRepeatable(baseName, parent);
-    // Toolbar (top): + button for adding siblings
-    const addBtn = document.createElement('button');
-    addBtn.title = 'Add sibling';
-    addBtn.textContent = '+';
-    addBtn.disabled = !repeatable;
-    addBtn.addEventListener('click', () => {
-      if (!repeatable) return;
-      const parentObj = parent as any;
-      const newKey = nextSiblingKey(baseName, parentObj);
-      const newVal: any = emptyLike(value);
-      parentObj[newKey] = newVal;
-      const rootLabel = 'codeBook';
-      const treeData = jsonToTree(state.treeRoot as JsonValue, state.elements, state.mode, 'root', rootLabel);
-      const newSelectedPath = keyPath.slice(0, -1).concat([newKey]);
-      const newSelectedId = 'root.' + newSelectedPath.join('.');
-      state.selectedId = newSelectedId;
-      state.selectedPath = newSelectedPath;
-      mountAriaTree(container!, treeData, (nid) => { state.selectedId = nid; renderMetadata(); }, newSelectedId);
-      renderMetadata();
-    });
-    controlsSlot.appendChild(addBtn);
-
-    // Toolbar: delete current sibling
-    const delBtn = document.createElement('button');
-    delBtn.title = 'Delete sibling';
-    delBtn.textContent = '−';
-    delBtn.disabled = false;
-    delBtn.addEventListener('click', () => {
-      const parentObj = parent as any;
-      const sibs = siblingKeys(parentObj, baseName);
-      const idx = sibs.indexOf(key);
-      if (idx === -1) return;
-      delete parentObj[key];
-      const rootLabel = 'codeBook';
-      const treeData = jsonToTree(state.treeRoot as JsonValue, state.elements, state.mode, 'root', rootLabel);
-      const nextSelKey = sibs[idx + 1] || sibs[idx - 1] || null;
-      if (nextSelKey) {
-        const p = keyPath.slice(0, -1).concat([nextSelKey]);
-        state.selectedPath = p; state.selectedId = 'root.' + p.join('.');
-      } else {
-        const p = keyPath.slice(0, -1);
-        state.selectedPath = p; state.selectedId = 'root.' + p.join('.');
-      }
-      mountAriaTree(container!, treeData, (nid) => { state.selectedId = nid; renderMetadata(); }, state.selectedId);
-      renderMetadata();
-    });
-    controlsSlot.appendChild(delBtn);
-
-    // Toolbar: move up/down within sibling group
-    const upBtn = document.createElement('button');
-    upBtn.title = 'Move up';
-    upBtn.textContent = '↑';
-    const dnBtn = document.createElement('button');
-    dnBtn.title = 'Move down';
-    dnBtn.textContent = '↓';
-    const sibsNow = siblingKeys(parent as any, baseName);
-    const idxNow = sibsNow.indexOf(key);
-    upBtn.disabled = !repeatable || idxNow <= 0;
-    dnBtn.disabled = !repeatable || idxNow === -1 || idxNow >= sibsNow.length - 1;
-    upBtn.addEventListener('click', () => {
-      const parentObj = parent as any;
-      const sibs = siblingKeys(parentObj, baseName);
-      const i = sibs.indexOf(key);
-      if (i > 0) {
-        const newOrder = sibs.slice();
-        [newOrder[i - 1], newOrder[i]] = [newOrder[i], newOrder[i - 1]];
-        reorderSiblings(parentObj, baseName, newOrder);
-        const rootLabel = 'codeBook';
-        const treeData = jsonToTree(state.treeRoot as JsonValue, state.elements, state.mode, 'root', rootLabel);
-        const p = keyPath.slice(0, -1).concat([key]);
-        state.selectedPath = p; state.selectedId = 'root.' + p.join('.');
-        mountAriaTree(container!, treeData, (nid) => { state.selectedId = nid; renderMetadata(); }, state.selectedId);
-        renderMetadata();
-      }
-    });
-    dnBtn.addEventListener('click', () => {
-      const parentObj = parent as any;
-      const sibs = siblingKeys(parentObj, baseName);
-      const i = sibs.indexOf(key);
-      if (i !== -1 && i < sibs.length - 1) {
-        const newOrder = sibs.slice();
-        [newOrder[i], newOrder[i + 1]] = [newOrder[i + 1], newOrder[i]];
-        reorderSiblings(parentObj, baseName, newOrder);
-        const rootLabel = 'codeBook';
-        const treeData = jsonToTree(state.treeRoot as JsonValue, state.elements, state.mode, 'root', rootLabel);
-        const p = keyPath.slice(0, -1).concat([key]);
-        state.selectedPath = p; state.selectedId = 'root.' + p.join('.');
-        mountAriaTree(container!, treeData, (nid) => { state.selectedId = nid; renderMetadata(); }, state.selectedId);
-        renderMetadata();
-      }
-    });
-    controlsSlot.appendChild(upBtn);
-    controlsSlot.appendChild(dnBtn);
-
-    metaContent.appendChild(controls);
+    // Legacy path fallback removed; normalized path handled above
   }
 
-  function getParentAndKey(root: any, keys: string[]): { parent: any; key: string; value: any } | null {
-    let parent: any = null;
-    let obj: any = root;
-    for (let i = 0; i < keys.length; i++) {
-      const k = keys[i];
-      if (i === keys.length - 1) {
-        return { parent: obj, key: k, value: obj ? obj[k] : undefined };
-      }
-      if (!obj || typeof obj !== 'object') return null;
-      obj = obj[k];
-      parent = obj;
-    }
-    return null;
-  }
+  // Legacy key-path resolver removed; normalized model uses resolveNormPath
 
-  function isRepeatable(base: string, parentObj?: Record<string, unknown>): boolean {
+  function isRepeatable(base: string, _ignore?: Record<string, unknown>): boolean {
     const e = state.rawElements ? (state.rawElements[base] || state.rawElements[base + ''] || undefined) : undefined;
     if (!e) return false;
     // Heuristics: consider common fields that denote multiplicity
@@ -549,98 +523,18 @@ function initTree() {
       if (s === 'true' || s === 'multiple' || s === 'many' || s === 'unbounded') return true;
       const n = parseInt(s, 10); if (!Number.isNaN(n)) return n !== 1 && n !== 0;
     }
-    // Fallback: if siblings exist with numeric suffixes, treat as repeatable
-    if (parentObj) {
-      for (const k of Object.keys(parentObj)) {
-        if (new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\.(\\d+)$').test(k)) return true;
-      }
-    }
     return false;
   }
 
-  function nextSiblingKey(base: string, parentObj: Record<string, unknown>): string {
-    let max = 0;
-    let hasBase = false;
-    for (const k of Object.keys(parentObj)) {
-      if (k === base) { hasBase = true; continue; }
-      const m = k.match(new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\.(\\d+)$'));
-      if (m) {
-        const idx = parseInt(m[1], 10);
-        if (!Number.isNaN(idx)) max = Math.max(max, idx);
-      }
-    }
-    const next = hasBase ? max + 1 : 1;
-    return `${base}.${next}`;
-  }
+  // Legacy sibling helpers removed; normalized model uses siblingOrder/swapChildren + createNormElement
 
-  function emptyLike(value: any): any {
-    // Primitive -> empty string
-    if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return '';
-    if (value && typeof value === 'object') {
-      const v: any = value;
-      // Unnamed value with optional .extra
-      if (v && Object.prototype.hasOwnProperty.call(v, '')) return { '': '' };
-      if (typeof v['.text'] === 'string') return { '.text': '' };
-      if (typeof v['text'] === 'string') return { 'text': '' };
-      if (typeof v['#text'] === 'string') return { '#text': '' };
-      if (typeof v['value'] === 'string') return { 'value': '' };
-      const entries = Object.entries(v).filter(([kk]) => kk !== '.attributes' && kk !== '.extra');
-      if (entries.length === 1 && /^\d+$/.test(entries[0][0])) {
-        const single = entries[0][1] as any;
-        const idxKey = entries[0][0];
-        if (single && typeof single === 'object') {
-          if (typeof single['.text'] === 'string') return { [idxKey]: { '.text': '' } };
-          if (typeof single['text'] === 'string') return { [idxKey]: { 'text': '' } };
-          if (typeof single['#text'] === 'string') return { [idxKey]: { '#text': '' } };
-          if (typeof single['value'] === 'string') return { [idxKey]: { 'value': '' } };
-        } else if (single === null || typeof single === 'string' || typeof single === 'number' || typeof single === 'boolean') {
-          return { [idxKey]: '' };
-        }
-      }
-      // Default empty container
-      return {};
-    }
-    return '';
-  }
-
-  function siblingKeys(parentObj: Record<string, unknown>, base: string): string[] {
-    const keys = Object.keys(parentObj);
-    const rx = new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:\\.(\\d+))?$');
-    const filtered = keys.filter(k => rx.test(k));
-    // sort by index where bare base is 0, then numeric ascending, else stable
-    return filtered.sort((a, b) => {
-      const ma = a === base ? 0 : parseInt((a.match(/\.(\d+)$/) || [,'999999'])[1], 10);
-      const mb = b === base ? 0 : parseInt((b.match(/\.(\d+)$/) || [,'999999'])[1], 10);
-      return ma - mb;
-    });
-  }
-
-  function reorderSiblings(parentObj: Record<string, unknown>, base: string, newOrder: string[]) {
-    const keys = Object.keys(parentObj);
-    const setSibling = new Set(newOrder);
-    const out: Record<string, unknown> = {};
-    let inserted = false;
-    for (const k of keys) {
-      if (setSibling.has(k)) {
-        if (!inserted) {
-          for (const sk of newOrder) out[sk] = (parentObj as any)[sk];
-          inserted = true;
-        }
-        // skip original sibling occurrence
-      } else {
-        out[k] = (parentObj as any)[k];
-      }
-    }
-    // replace content of parentObj preserving reference
-    for (const k of Object.keys(parentObj)) delete (parentObj as any)[k];
-    for (const k of Object.keys(out)) (parentObj as any)[k] = out[k];
-  }
+  // Legacy sibling helpers removed; normalized model uses siblingOrder/swapChildren
 }
 
 // Preserve expand/selection state across remounts
 const treeUiState = new WeakMap<HTMLElement, { expanded: Set<string>; focusedId: string | null; selectedId: string | null }>();
 
-function mountAriaTree(container: HTMLElement, data: TreeNode, onSelect?: (id: string, path: string[]) => void, initialSelectedId?: string) {
+function mountAriaTree(container: HTMLElement, data: TreeNode, onSelect?: (id: string, path: number[]) => void, initialSelectedId?: string) {
   container.innerHTML = '';
   const prev = treeUiState.get(container);
   const expanded = prev?.expanded ? new Set(prev.expanded) : new Set<string>([data.id]);
@@ -685,7 +579,7 @@ function mountAriaTree(container: HTMLElement, data: TreeNode, onSelect?: (id: s
       selectedId = node.id;
       if (hasChildren) toggle(node.id);
       rerender();
-      try { onSelect && onSelect(node.id, node.path); } catch { /* noop */ }
+      try { onSelect && onSelect(node.id, node.pathIdx); } catch { /* noop */ }
     });
 
     // Keyboard interactions
@@ -727,7 +621,7 @@ function mountAriaTree(container: HTMLElement, data: TreeNode, onSelect?: (id: s
         selectedId = node.id;
         if (hasChildren) toggle(node.id);
         rerender();
-        try { onSelect && onSelect(node.id, node.path); } catch { /* noop */ }
+        try { onSelect && onSelect(node.id, node.pathIdx); } catch { /* noop */ }
       }
     });
 

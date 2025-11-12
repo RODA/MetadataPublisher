@@ -45,8 +45,7 @@ async function loadXmlViaR(hostFilePath: string) {
     await webR.evalRVoid(`codeBook <- getCodebook("${utils.escapeForR(rPath)}")`);
 
     const getCodebookFromJSON = 'jsonlite::toJSON(' +
-        'keep_attributes(codeBook), ' +
-        // 'codeBook, ' +
+        'normalize_codebook(codeBook), ' +
         'auto_unbox = TRUE, null = "null")';
 
     const response = await webR.evalRString(getCodebookFromJSON);
