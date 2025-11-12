@@ -27,7 +27,7 @@
 
       .toolbar {
         background: #efefef;
-        border-bottom: 1px solid var(--border-color, #c9c9c9);
+        border-bottom: 2px solid var(--border-color, #898989);
         height: var(--toolbar-height);
         display: flex;
         align-items: center;
@@ -36,8 +36,8 @@
       }
 
       .tree-area {
-        background: #ffffff;
-        border-right: 1px solid var(--border-color, #c9c9c9);
+        background: #c5e2d0d7;
+        border-right: 1px solid var(--border-color, #898989);
         padding: 8px;
         overflow: auto;
         min-width: var(--tree-min-width, 200px);
@@ -50,7 +50,7 @@
       }
 
       .metadata-area {
-        background: #ffffff;
+        background: #c5e2d0d7;
         /* Ensure this grid child can actually scroll */
         min-height: 0;
         overflow-y: auto;
@@ -110,8 +110,8 @@
         line-height: 20px;
         padding: 0;
         text-align: center;
-        border: 1px solid #c0c0c0;
-        background: #fff;
+        border: 1px solid #6a6a6a;
+        background: #c5e2d0;
         cursor: pointer;
         border-radius: 4px;
         margin: 0 2px; /* a bit of left-right spacing */
@@ -120,6 +120,9 @@
       .tree-controls button:disabled {
         opacity: 0.5;
         cursor: default;
+        background: #b4b4b4;
+        color: #000;
+        border: 1px solid #6a6a6a;
       }
     </style>
   </head>

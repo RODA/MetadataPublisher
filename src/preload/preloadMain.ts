@@ -490,7 +490,10 @@ function initTree() {
 
       const baseName = normalizeName(String(node.name || ''));
       const repeatable = isRepeatable(baseName);
-      const addBtn = document.createElement('button'); addBtn.title = 'Add sibling'; addBtn.textContent = '+'; addBtn.disabled = !repeatable;
+      const addBtn = document.createElement('button');
+      addBtn.title = 'Add sibling';
+      addBtn.textContent = '+';
+      addBtn.disabled = !repeatable;
       addBtn.addEventListener('click', () => {
         if (!repeatable || !parent) return;
         parent.children = Array.isArray(parent.children) ? parent.children : [];
@@ -516,7 +519,9 @@ function initTree() {
       });
       controlsSlot.appendChild(addBtn);
 
-      const delBtn = document.createElement('button'); delBtn.title = 'Delete sibling'; delBtn.textContent = '−';
+      const delBtn = document.createElement('button');
+      delBtn.title = 'Delete sibling';
+      delBtn.textContent = '−';
       delBtn.addEventListener('click', () => {
         if (!parent || typeof index !== 'number') return;
         parent.children?.splice(index, 1);
@@ -540,11 +545,16 @@ function initTree() {
       });
       controlsSlot.appendChild(delBtn);
 
-      const upBtn = document.createElement('button'); upBtn.title = 'Move up'; upBtn.textContent = '↑';
-      const dnBtn = document.createElement('button'); dnBtn.title = 'Move down'; dnBtn.textContent = '↓';
+      const upBtn = document.createElement('button');
+      upBtn.title = 'Move up';
+      upBtn.textContent = '↑';
+      const dnBtn = document.createElement('button');
+      dnBtn.title = 'Move down';
+      dnBtn.textContent = '↓';
       const order = siblingOrder(parent, baseName);
       const idxNow = order.indexOf(typeof index === 'number' ? index : -1);
-      upBtn.disabled = !repeatable || idxNow <= 0; dnBtn.disabled = !repeatable || idxNow === -1 || idxNow >= order.length - 1;
+      upBtn.disabled = !repeatable || idxNow <= 0;
+      dnBtn.disabled = !repeatable || idxNow === -1 || idxNow >= order.length - 1;
       upBtn.addEventListener('click', () => {
         const order = siblingOrder(parent, baseName); const i = order.indexOf(index);
         if (i > 0) { const a = order[i - 1], b = order[i]; swapChildren(parent, a, b);
