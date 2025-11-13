@@ -193,7 +193,7 @@ function normToTree(
 }
 
 function initTree() {
-  const container = document.querySelector('.tree-area') as HTMLElement | null;
+  const container = document.querySelector('.tree-wrapper') as HTMLElement | null;
   if (!container) return;
   const metaArea = document.querySelector('.metadata-area') as HTMLElement | null;
   const metaContent = document.querySelector('.meta-content') as HTMLElement | null;
@@ -859,7 +859,23 @@ function mountAriaTree(container: HTMLElement, data: TreeNode, onSelect?: (id: s
   const root = document.createElement('ul');
   root.className = 'tree';
   root.setAttribute('role', 'tree');
+  const indicator = document.createElement('div');
+  indicator.className = 'tree-indicator';
+  indicator.setAttribute('aria-label', 'Dataset indicator');
+  const icon = document.createElement('img');
+  icon.className = 'tree-indicator__icon';
+  icon.src = '../assets/database.svg';
+  icon.alt = '';
+  icon.setAttribute('aria-hidden', 'true');
+  const label = document.createElement('span');
+  label.className = 'tree-indicator__label tree__label';
+  label.setAttribute('data-i18n', 'page.main.dataset');
+  label.textContent = i18n.t('page.main.dataset');
+  indicator.appendChild(icon);
+  indicator.appendChild(label);
   container.appendChild(root);
+  container.appendChild(indicator);
+  i18n.translateDocument(document, path.resolve(__dirname));
 
   const renderNode = (node: TreeNode): HTMLElement => {
     const li = document.createElement('li');

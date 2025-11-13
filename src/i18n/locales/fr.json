@@ -23,15 +23,20 @@
   "tree.names": "Noms",
   "tree.titles": "Titres",
   "tree.nametitles": "Noms et titres",
+  "settings.backend": "Moteur R",
+  "settings.backend.native": "Système installé",
+  "settings.backend.webr": "WebR intégré",
 
   "messages.load.failed": "Échec du chargement",
-  "messages.load.unsupported": "Format de fichier non pris en charge. Déposez un fichier DDI XML, SPSS (.sav), Stata (.dta), R (.rds), SAS (.xpt) ou Excel (.xlsx).",
+  "messages.load.unsupported": "Format de fichier non pris en charge. Déposez un fichier DDI XML, SPSS (.sav), Stata (.dta), R (.rds), SAS (.sas7bdat) ou Excel (.xls, .xlsx).",
   "messages.app.initializing": "Initialisation...",
 
   "page.main.title": "Metadata Publisher",
   "page.main.body": "Un outil pour documenter et publier des métadonnées utilisant la norme DDI Codebook.",
+  "page.main.dataset": "Connexion à l'ensemble de données",
   "page.main.drop.title": "Déposez ou sélectionnez un fichier de métadonnées",
-  "page.main.drop.body": "Faites glisser un fichier pris en charge ou utilisez Fichier > Charger pour éditer ses métadonnées.",
-  "page.main.drop.formats": "Formats pris en charge : XML, SPSS (.sav, .por), Stata (.dta), R (.rds), SAS (.xpt), Excel (.xlsx).",
-  "page.main.loader": "Chargement..."
+  "page.main.drop.body": "Faites glisser un fichier pris en charge ou utilisez Fichier > Charger ..., pour éditer ses métadonnées. Formats pris en charge :",
+  "page.main.drop.formats": "XML, SPSS (.sav, .por), Stata (.dta), R (.rds), SAS (.sas7bdat), Excel (.xls, .xlsx).",
+  "page.main.loader": "Chargement...",
+  "page.main.rendering": "Affichage des métadonnées..."
 }

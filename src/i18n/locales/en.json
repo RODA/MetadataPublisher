@@ -23,15 +23,20 @@
   "tree.names": "Names",
   "tree.titles": "Titles",
   "tree.nametitles": "Names and titles",
+  "settings.backend": "R engine",
+  "settings.backend.native": "System installed",
+  "settings.backend.webr": "Embedded WebR",
 
   "messages.load.failed": "Load failed",
-  "messages.load.unsupported": "Unsupported file format. Drop a DDI XML, SPSS (.sav), Stata (.dta), R (.rds), SAS (.xpt), or Excel (.xlsx) file.",
+  "messages.load.unsupported": "Unsupported file format. Drop a DDI XML, SPSS (.sav), Stata (.dta), R (.rds), SAS (.sas7bdat), or Excel (.xls, .xlsx) file.",
   "messages.app.initializing": "Initializing...",
 
   "page.main.title": "Metadata Publisher",
   "page.main.body": "A tool for documenting and publishing metadata using the DDI Codebook standard.",
+  "page.main.dataset": "Dataset connection",
   "page.main.drop.title": "Drop or select a metadata file",
-  "page.main.drop.body": "Drag a supported file or use File > Load to edit its metadata.",
-  "page.main.drop.formats": "Supported formats: XML, SPSS (.sav, .por), Stata (.dta), R (.rds), SAS (.xpt), Excel (.xlsx).",
-  "page.main.loader": "Loading..."
+  "page.main.drop.body": "Drag a supported file or use File > Load ..., to edit its metadata. Supported formats:",
+  "page.main.drop.formats": "XML, SPSS (.sav, .por), Stata (.dta), R (.rds), SAS (.sas7bdat), Excel (.xls, .xlsx).",
+  "page.main.loader": "Loading...",
+  "page.main.rendering": "Rendering metadata..."
 }
