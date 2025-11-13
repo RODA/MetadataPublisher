@@ -20,6 +20,7 @@ coms.on('removeCover', () => {
 export {};
 let FULL_PATH_RENDERING = false;
 let DEBUG_LABELS = false;
+let AVOID_DATA_DSCR = true;
 
 // i18n: initialize with whatever main chose (will be synced shortly)
 try {
@@ -275,6 +276,42 @@ function initTree() {
     selectedPath: [] as number[],
   };
 
+  const isDataDscrName = (name?: string | null): boolean => {
+    if (!name) return false;
+    return normalizeName(String(name)).toLowerCase() === 'datadscr';
+  };
+
+  const handleTreeSelect = (nodeId: string, pathIdx?: number[]) => {
+    const targetPath = pathIdx && pathIdx.length ? [...pathIdx] : idToPath(nodeId);
+    state.selectedId = nodeId;
+    state.selectedPath = targetPath;
+    renderMetadata();
+  };
+
+  let metadataRenderFrame: number | null = null;
+  let metadataCoverActive = false;
+
+  const cancelPendingMetadataRender = () => {
+    if (metadataRenderFrame !== null) {
+      window.cancelAnimationFrame(metadataRenderFrame);
+      metadataRenderFrame = null;
+    }
+  };
+
+  const ensureMetadataCover = () => {
+    if (!metadataCoverActive) {
+      metadataCoverActive = true;
+      cover.addCover(i18n.t('page.main.rendering'));
+    }
+  };
+
+  const releaseMetadataCover = () => {
+    if (metadataCoverActive) {
+      metadataCoverActive = false;
+      cover.removeCover();
+    }
+  };
+
   const parseUriList = (raw: string | undefined): string | null => {
     if (!raw) return null;
     const lines = raw.split(/[\r\n]+/).map((line) => line.trim()).filter(Boolean);
@@ -302,12 +339,12 @@ function initTree() {
   };
 
   const dispatchFileLoad = async (files: FileList | null | undefined, event?: DragEvent) => {
-    console.log('[Drop] dispatchFileLoad called', files);
+    // console.log('[Drop] dispatchFileLoad called', files);
     if (!files || files.length === 0) {
       // try to infer from URI list if possible
       const uriList = event?.dataTransfer?.getData('text/uri-list') || event?.dataTransfer?.getData('text/plain');
       const fallbackPath = parseUriList(uriList);
-      console.log('[Drop] fallback uriList', uriList, 'parsed', fallbackPath);
+      // console.log('[Drop] fallback uriList', uriList, 'parsed', fallbackPath);
       if (fallbackPath) {
         coms.sendTo('main', 'loadFile', fallbackPath);
         return;
@@ -316,9 +353,9 @@ function initTree() {
     }
     const file = files[0];
     const filePath = (file as File & { path?: string }).path;
-    console.log('[Drop] file keys', Object.keys(file), 'has path', 'path' in file);
-    console.log('[Drop] path descriptor', Object.getOwnPropertyDescriptor(file, 'path'));
-    console.log('[Drop] file from drop', filePath);
+    // console.log('[Drop] file keys', Object.keys(file), 'has path', 'path' in file);
+    // console.log('[Drop] path descriptor', Object.getOwnPropertyDescriptor(file, 'path'));
+    // console.log('[Drop] file from drop', filePath);
     if (typeof filePath === 'string' && filePath) {
       coms.sendTo('main', 'loadFile', filePath);
       return;
@@ -396,17 +433,16 @@ function initTree() {
     }
     if (metaArea) metaArea.classList.add('has-metadata');
     state.treeRoot = treeRoot;
+    state.selectedId = 'root';
+    state.selectedPath = [];
     if (DEBUG_LABELS) {
       try {
         console.log('[Labels] render() mode=', state.mode, 'titles.size=', state.elements ? Object.keys(state.elements).length : 0, 'root=', treeRoot?.name);
       } catch {}
     }
     const treeData = normToTree(treeRoot, state.elements, state.mode, 'root', []);
-    mountAriaTree(container, treeData, (nodeId, pathIdx) => {
-      state.selectedId = nodeId;
-      state.selectedPath = pathIdx ? [...pathIdx] : idToPath(nodeId);
-      renderMetadata();
-    }, state.selectedId);
+    treeUiState.delete(container);
+    mountAriaTree(container, treeData, handleTreeSelect, state.selectedId);
     renderMetadata();
   };
 
@@ -461,11 +497,7 @@ function initTree() {
     if (state.treeRoot) {
       // Re-render tree labels with new elements map
       const treeData = normToTree(state.treeRoot, state.elements, state.mode, 'root', []);
-      mountAriaTree(container, treeData, (nodeId, pathIdx) => {
-        state.selectedId = nodeId;
-        state.selectedPath = pathIdx ? [...pathIdx] : idToPath(nodeId);
-        renderMetadata();
-      }, state.selectedId);
+      mountAriaTree(container, treeData, handleTreeSelect, state.selectedId);
       renderMetadata();
     }
   };
@@ -487,34 +519,33 @@ function initTree() {
     }
   });
 
-  function renderMetadata() {
+  function renderMetadataImpl() {
     if (!metaArea || !metaContent || !controlsSlot) return;
-    if (!metaArea) return;
-    // Reset content area, keep toolbar node
-    metaContent.innerHTML = '';
-    controlsSlot.innerHTML = '';
     if (!state.treeRoot || !state.selectedId) return;
 
-    // Helper: build display label based on current mode (name/title/both)
-    const makeLabel = (n: string): string => {
-      const title = state.elements?.[normalizeName(n)];
-      if (state.mode === 'name') return n;
-      if (state.mode === 'title') return title || n;
-      return title ? `${n}: ${title}` : n;
-    };
-
-    // Helper: display-friendly attribute name mapping
-    const displayAttr = (k: string): string => (k === 'xmlang' ? 'xml:lang' : k);
-
-    // Build path tokens after 'root'
     const keyPath = state.selectedPath.length ? [...state.selectedPath] : idToPath(state.selectedId);
     const normRoot = state.treeRoot;
+    if (!normRoot) return;
+    const resolved = resolveNormPath(normRoot, keyPath);
+    if (!resolved) return;
+    const { parent, index, node, namePath } = resolved;
+    if (!node) return;
+    if (AVOID_DATA_DSCR && isDataDscrName(node.name)) return;
+
+    metaContent.innerHTML = '';
+    controlsSlot.innerHTML = '';
+
     if (normRoot) {
-      const resolved = resolveNormPath(normRoot, keyPath);
-      if (!resolved) return;
-      const { parent, index, node, namePath } = resolved;
-      // console.log('[Tree] render node', { path: keyPath, name: node.name, value: node.value });
-      if (!node) return;
+      // Helper: build display label based on current mode (name/title/both)
+      const makeLabel = (n: string): string => {
+        const title = state.elements?.[normalizeName(n)];
+        if (state.mode === 'name') return n;
+        if (state.mode === 'title') return title || n;
+        return title ? `${n}: ${title}` : n;
+      };
+
+      // Helper: display-friendly attribute name mapping
+      const displayAttr = (k: string): string => (k === 'xmlang' ? 'xml:lang' : k);
 
       // Title
       const title = document.createElement('h1');
@@ -616,11 +647,7 @@ function initTree() {
         const newSelectedId = buildIdFromPath(newSelectedPath);
         state.selectedPath = newSelectedPath;
         state.selectedId = newSelectedId;
-        mountAriaTree(container!, treeData, (nid, pathIdx) => {
-          state.selectedId = nid;
-          state.selectedPath = pathIdx ? [...pathIdx] : idToPath(nid);
-          renderMetadata();
-        }, newSelectedId);
+        mountAriaTree(container!, treeData, handleTreeSelect, newSelectedId);
         renderMetadata();
       });
       controlsSlot.appendChild(addBtn);
@@ -642,11 +669,7 @@ function initTree() {
         }
         state.selectedPath = nextPath;
         state.selectedId = buildIdFromPath(nextPath);
-        mountAriaTree(container!, treeData, (nid, pathIdx) => {
-          state.selectedId = nid;
-          state.selectedPath = pathIdx ? [...pathIdx] : idToPath(nid);
-          renderMetadata();
-        }, state.selectedId);
+        mountAriaTree(container!, treeData, handleTreeSelect, state.selectedId);
         renderMetadata();
       });
       controlsSlot.appendChild(delBtn);
@@ -666,22 +689,14 @@ function initTree() {
         if (i > 0) { const a = order[i - 1], b = order[i]; swapChildren(parent, a, b);
           const treeData = normToTree(state.treeRoot as NormNode, state.elements, state.mode, 'root', []);
           const p = keyPath.slice(0, -1).concat([a]); state.selectedPath = p; state.selectedId = buildIdFromPath(p);
-          mountAriaTree(container!, treeData, (nid, pathIdx) => {
-            state.selectedId = nid;
-            state.selectedPath = pathIdx ? [...pathIdx] : idToPath(nid);
-            renderMetadata();
-          }, state.selectedId); renderMetadata(); }
+          mountAriaTree(container!, treeData, handleTreeSelect, state.selectedId); renderMetadata(); }
       });
       dnBtn.addEventListener('click', () => {
         const order = siblingOrder(parent, baseName); const i = order.indexOf(index);
         if (i !== -1 && i < order.length - 1) { const a = order[i], b = order[i + 1]; swapChildren(parent, a, b);
           const treeData = normToTree(state.treeRoot as NormNode, state.elements, state.mode, 'root', []);
           const p = keyPath.slice(0, -1).concat([b]); state.selectedPath = p; state.selectedId = buildIdFromPath(p);
-          mountAriaTree(container!, treeData, (nid, pathIdx) => {
-            state.selectedId = nid;
-            state.selectedPath = pathIdx ? [...pathIdx] : idToPath(nid);
-            renderMetadata();
-          }, state.selectedId); renderMetadata(); }
+          mountAriaTree(container!, treeData, handleTreeSelect, state.selectedId); renderMetadata(); }
       });
       controlsSlot.appendChild(upBtn); controlsSlot.appendChild(dnBtn);
 
@@ -736,6 +751,7 @@ function initTree() {
         };
 
         const renderDeep = (n: NormNode, pathNames: string[], level: number) => {
+          if (AVOID_DATA_DSCR && isDataDscrName(n.name)) return;
           const section = document.createElement('section');
           const hTag = `h${Math.min(level, 6)}` as keyof HTMLElementTagNameMap;
           const heading = document.createElement(hTag);
@@ -770,13 +786,41 @@ function initTree() {
         };
 
         for (const child of node.children) {
+          if (AVOID_DATA_DSCR && isDataDscrName(child.name)) continue;
           renderDeep(child, [child.name], 2);
         }
+        const bottomSpacer = document.createElement('div');
+        bottomSpacer.className = 'metadata-end-spacer';
+        metaContent.appendChild(bottomSpacer);
       }
 
       return; // handled normalized path
     }
     // Legacy path fallback removed; normalized path handled above
+  }
+
+  function renderMetadata() {
+    if (!metaArea || !metaContent || !controlsSlot) {
+      cancelPendingMetadataRender();
+      releaseMetadataCover();
+      return;
+    }
+    if (!state.treeRoot || !state.selectedId) {
+      cancelPendingMetadataRender();
+      releaseMetadataCover();
+      return;
+    }
+
+    cancelPendingMetadataRender();
+    ensureMetadataCover();
+    metadataRenderFrame = window.requestAnimationFrame(() => {
+      metadataRenderFrame = null;
+      try {
+        renderMetadataImpl();
+      } finally {
+        releaseMetadataCover();
+      }
+    });
   }
 
   // Legacy key-path resolver removed; normalized model uses resolveNormPath

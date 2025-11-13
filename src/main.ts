@@ -76,7 +76,7 @@ function runNativeRScript(scriptPath: string, args: string[]): Promise<string> {
     const rscript = nativeRscriptPath;
     return new Promise((resolve, reject) => {
         // console.log('[Main] running native R script', scriptPath, args);
-        const proc = spawn(rscript, [scriptPath, ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
+        const proc = spawn(rscript, ['--vanilla', '--quiet', scriptPath, ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
         const typedProc = proc as ChildProcessWithoutNullStreams;
         let stdout = '';
         let stderr = '';
@@ -102,7 +102,13 @@ function runNativeRScript(scriptPath: string, args: string[]): Promise<string> {
 
 async function loadCodebookViaNativeR(hostFilePath: string): Promise<JsonValue> {
     const raw = await runNativeRScript(nativeCodebookScript, [hostFilePath, nativeRLibraryDir]);
-    return JSON.parse(raw) as JsonValue;
+    // const savedPath = await writeDiagnosticFile('native-codebook', raw);
+    try {
+        return JSON.parse(raw) as JsonValue;
+    } catch (error) {
+        // console.error('[Main] failed to parse native R codebook output saved to', savedPath, error);
+        throw error;
+    }
 }
 
 async function ensureDropDir() {
@@ -120,6 +126,17 @@ const writeDroppedFile = async (name: string, data: Buffer): Promise<string> => 
     const dropPath = path.join(DROP_TEMP_DIR, `${timestamp}-${cleanName}`);
     await fs.promises.writeFile(dropPath, data);
     return dropPath;
+};
+
+// function to write the json to an external file for diagnostics
+const writeDiagnosticFile = async (label: string, text: string): Promise<string> => {
+    await ensureDropDir();
+    const timestamp = Date.now();
+    const cleanLabel = sanitizeFilename(label) || `native-output-${timestamp}`;
+    const dumpPath = path.join(DROP_TEMP_DIR, `${timestamp}-${cleanLabel}.json`);
+    await fs.promises.writeFile(dumpPath, text, 'utf8');
+    // console.log('[Main] saved native R output to', dumpPath);
+    return dumpPath;
 };
 
 async function loadCodebookFile(hostFilePath: string) {
