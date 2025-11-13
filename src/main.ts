@@ -16,8 +16,8 @@ import { getOrBuildDDITree, JsonValue, DdiBundle } from './modules/dditree';
 
 app.setName('MetadataPublisher');
 
-const SUPPORTED_CODEBOOK_EXTENSIONS = new Set(['xml', 'sav', 'por', 'dta', 'rds', 'xpt', 'xlsx']);
-const SUPPORTED_CODEBOOK_FILTERS = ['xml', 'sav', 'por', 'dta', 'rds', 'xpt', 'xlsx'];
+const SUPPORTED_CODEBOOK_EXTENSIONS = new Set(['xml', 'sav', 'por', 'dta', 'rds', 'sas7bdat', 'xls', 'xlsx']);
+const SUPPORTED_CODEBOOK_FILTERS = ['xml', 'sav', 'por', 'dta', 'rds', 'sas7bdat', 'xls', 'xlsx'];
 const getExtension = (filePath: string): string => {
     return path.extname(filePath).replace(/^\./, '').toLowerCase();
 };
@@ -26,6 +26,23 @@ const isSupportedCodebookFile = (filePath: string): boolean => {
     const ext = getExtension(filePath);
     return Boolean(ext && SUPPORTED_CODEBOOK_EXTENSIONS.has(ext));
 };
+
+type BackendMode = 'native' | 'webr';
+const BACKEND_MODE_KEY = 'backendMode';
+
+function getBackendMode(): BackendMode {
+    try {
+        const stored = settings.get(BACKEND_MODE_KEY);
+        if (stored === 'webr') return 'webr';
+    } catch { /* noop */ }
+    return 'native';
+}
+
+function setBackendMode(mode: BackendMode) {
+    try {
+        settings.set(BACKEND_MODE_KEY, mode);
+    } catch { /* noop */ }
+}
 
 // Static DDI structure (template)
 let dditree: JsonValue | null = null;
@@ -102,11 +119,9 @@ function runNativeRScript(scriptPath: string, args: string[]): Promise<string> {
 
 async function loadCodebookViaNativeR(hostFilePath: string): Promise<JsonValue> {
     const raw = await runNativeRScript(nativeCodebookScript, [hostFilePath, nativeRLibraryDir]);
-    // const savedPath = await writeDiagnosticFile('native-codebook', raw);
     try {
         return JSON.parse(raw) as JsonValue;
     } catch (error) {
-        // console.error('[Main] failed to parse native R codebook output saved to', savedPath, error);
         throw error;
     }
 }
@@ -155,7 +170,9 @@ async function loadCodebookFile(hostFilePath: string) {
 
     try {
         let codebook: JsonValue;
-        if (nativeRscriptPath) {
+        const backendMode = getBackendMode();
+        const useNative = backendMode === 'native' && Boolean(nativeRscriptPath);
+        if (useNative) {
             try {
                 // console.log('[Main] loading codebook via native R', hostFilePath);
                 codebook = await loadCodebookViaNativeR(hostFilePath);
@@ -168,6 +185,9 @@ async function loadCodebookFile(hostFilePath: string) {
                 codebook = await loadCodebookViaWebR(hostFilePath);
             }
         } else {
+            if (backendMode === 'native' && !nativeRscriptPath) {
+                // console.log('[Main] native backend requested but Rscript unavailable, using WebR instead', hostFilePath);
+            }
             await ensureWebRInitialized();
             // console.log('[Main] loading codebook via WebR', hostFilePath);
             codebook = await loadCodebookViaWebR(hostFilePath);
@@ -317,7 +337,8 @@ async function ensureWebRInitialized() {
 
 async function initializeRBackend() {
     // console.log('[Main] initializeRBackend: native available?', Boolean(nativeRscriptPath));
-    if (nativeRscriptPath) {
+    const backendMode = getBackendMode();
+    if (backendMode === 'native' && nativeRscriptPath) {
         try {
             const bundle = (await getOrBuildDDITree(async () => {
                 const raw = await runNativeRScript(nativeDDITreeScript, [nativeRLibraryDir]);
@@ -333,6 +354,11 @@ async function initializeRBackend() {
             // console.error('[Main] native R initialization failed, falling back to WebR', error);
             nativeRscriptPath = null;
         }
+    }
+    if (backendMode === 'webr') {
+        // console.log('[Main] using embedded WebR backend per user preference');
+    } else if (!nativeRscriptPath) {
+        // console.log('[Main] native R backend unavailable, falling back to WebR');
     }
     // console.log('[Main] falling back to WebR initialization');
     await ensureWebRInitialized();
@@ -544,8 +570,20 @@ function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
         { label: i18n.t('tree.titles'), type: 'radio', checked: currentLabelMode === 'title', click: () => setMode('title') },
         { label: i18n.t('tree.nametitles'), type: 'radio', checked: currentLabelMode === 'both', click: () => setMode('both') },
     ];
+    const currentBackendMode = getBackendMode();
+    const setBackend = (mode: BackendMode) => {
+        setBackendMode(mode);
+        const mainMenu = Menu.buildFromTemplate(buildMainMenuTemplate());
+        Menu.setApplicationMenu(mainMenu);
+    };
+    const backendSubmenu: MenuItemConstructorOptions[] = [
+        { label: i18n.t('settings.backend.native'), type: 'radio', checked: currentBackendMode === 'native', click: () => setBackend('native') },
+        { label: i18n.t('settings.backend.webr'), type: 'radio', checked: currentBackendMode === 'webr', click: () => setBackend('webr') },
+    ];
     const settingsSubmenu: MenuItemConstructorOptions[] = [
         { label: i18n.t('tree.labels'), submenu: treeLabelsSubmenu },
+        { type: 'separator' },
+        { label: i18n.t('settings.backend'), submenu: backendSubmenu },
     ];
     template.push({ label: i18n.t('menu.settings'), submenu: settingsSubmenu, enabled: !booting });
     return template;
@@ -596,9 +634,9 @@ app.whenReady().then(async () => {
 
     nativeRscriptPath = await findNativeRscript();
     // if (nativeRscriptPath) {
-    //     console.log(`[Main] Native Rscript available at ${nativeRscriptPath}`);
+        // console.log(`[Main] Native Rscript available at ${nativeRscriptPath}`);
     // } else {
-    //     console.log('[Main] Native Rscript not found; falling back to WebR for codebook loading');
+        // console.log('[Main] Native Rscript not found; falling back to WebR for codebook loading');
     // }
 
     createMainWindow();
@@ -613,6 +651,10 @@ app.whenReady().then(async () => {
     try {
         const v = settings.get('treeLabelMode');
         if (v !== 'name' && v !== 'title' && v !== 'both') settings.set('treeLabelMode', 'both');
+    } catch { /* noop */ }
+    try {
+        const backend = settings.get(BACKEND_MODE_KEY);
+        if (backend !== 'native' && backend !== 'webr') settings.set(BACKEND_MODE_KEY, 'native');
     } catch { /* noop */ }
 });
 
