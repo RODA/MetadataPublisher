@@ -28,20 +28,25 @@
   "settings.backend.webr": "Embedded WebR",
 
   "messages.load.failed": "Load failed",
-  "messages.load.unsupported": "Unsupported file format. Drop a DDI XML, SPSS (.sav), Stata (.dta), R (.rds), SAS (.sas7bdat), or Excel (.xls, .xlsx) file.",
+  "messages.load.unsupported": "Unsupported file format. Drop a DDI XML (.xml), SPSS (.sav), Stata (.dta), R (.rds), SAS (.sas7bdat), or Excel (.xls, .xlsx) file.",
   "messages.app.initializing": "Initializing...",
+  "messages.app.initializing.webr": "Initializing WebR...",
+  "messages.native.notfound": "System R (Rscript) was not found. The application will use the embedded WebR.",
+  "messages.native.webr_once": "For this session only",
+  "messages.native.webr_default": "By default from now on",
+  "messages.native.initfailed": "Failed to initialize system R.",
 
   "page.main.title": "Metadata Publisher",
   "page.main.body": "A tool for documenting and publishing metadata using the DDI Codebook standard.",
   "page.main.dataset": "Dataset connection",
-  "page.main.drop.title": "Drop or select a metadata file",
+  "page.main.drop.title": "Drop or select a (meta)data file",
   "page.main.drop.body": "Drag a supported file or use File > Load ..., to edit its metadata. Supported formats:",
   "page.main.drop.formats": "XML, SPSS (.sav, .por), Stata (.dta), R (.rds), SAS (.sas7bdat), Excel (.xls, .xlsx).",
   "page.main.loader": "Loading...",
   "page.main.rendering": "Rendering metadata...",
   "messages.native.missing": "The following packages are absent from the system installed R: {packages}.",
   "messages.native.useWebR": "Continue with the embedded R instead?",
-  "messages.native.webr": "Yes",
+  "messages.native.yestowebr": "Yes",
   "messages.native.cancel": "Cancel",
   "messages.native.unknownPackages": "required packages"
 }

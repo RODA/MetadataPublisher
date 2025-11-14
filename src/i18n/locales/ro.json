@@ -28,20 +28,25 @@
   "settings.backend.webr": "WebR încorporat",
 
   "messages.load.failed": "Încărcare eșuată",
-  "messages.load.unsupported": "Fișier invalid. Plasați un DDI XML, SPSS (.sav), Stata (.dta), R (.rds), SAS (.sas7bdat) sau Excel (.xls, .xlsx).",
+  "messages.load.unsupported": "Fișier invalid. Plasați un DDI XML (.xml), SPSS (.sav), Stata (.dta), R (.rds), SAS (.sas7bdat) sau Excel (.xls, .xlsx).",
   "messages.app.initializing": "Inițializare...",
+  "messages.app.initializing.webr": "Inițializare WebR...",
+  "messages.native.notfound": "R (Rscript) nu a fost găsit pe acest sistem. Aplicația va folosi WebR încorporat.",
+  "messages.native.webr_once": "Doar pentru această sesiune",
+  "messages.native.webr_default": "În mod implicit de acum înainte",
+  "messages.native.initfailed": "Inițializarea R din sistem nu a funcționat.",
 
   "page.main.title": "Metadata Publisher",
   "page.main.body": "Un instrument pentru documentarea și publicarea (meta)datelor utilizând standardul DDI Codebook.",
   "page.main.dataset": "Conexiune set de date",
-  "page.main.drop.title": "Plasați sau selectați un fișier de metadate",
+  "page.main.drop.title": "Plasați sau selectați un fișier de (meta)date",
   "page.main.drop.body": "Trageți un fișier acceptat sau utilizați Fișier > Încărcare ..., pentru a-i edita metadatele. Formate acceptate:",
   "page.main.drop.formats": "XML, SPSS (.sav, .por), Stata (.dta), R (.rds), SAS (.sas7bdat), Excel (.xls, .xlsx).",
   "page.main.loader": "Se încarcă...",
   "page.main.rendering": "Se afișează metadatele...",
   "messages.native.missing": "Următoarele pachete lipsesc din R instalat în sistem: {packages}.",
   "messages.native.useWebR": "Continuați cu R-ul încorporat?",
-  "messages.native.webr": "Da",
+  "messages.native.yestowebr": "Da",
   "messages.native.cancel": "Anulare",
   "messages.native.unknownPackages": "pachete necesare"
 }

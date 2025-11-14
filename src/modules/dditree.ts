@@ -5,7 +5,7 @@ import * as crypto from 'crypto';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [k: string]: JsonValue };
-export type DdiBundle = { tree: JsonValue; elements: JsonValue };
+export type DDIBundle = { tree: JsonValue; elements: JsonValue };
 
 type Meta = {
     signature: string;
@@ -47,7 +47,7 @@ export function computeSignature(): string {
     return hash.digest('hex');
 }
 
-function loadFromCache(expectedSig: string): JsonValue | DdiBundle | null {
+function loadFromCache(expectedSig: string): JsonValue | DDIBundle | null {
     try {
         const metaRaw = fs.readFileSync(metaPath(), 'utf8');
         const meta = JSON.parse(metaRaw) as Meta;
@@ -59,7 +59,7 @@ function loadFromCache(expectedSig: string): JsonValue | DdiBundle | null {
             const eraw = fs.readFileSync(elementsPath(), 'utf8');
             const elements = JSON.parse(eraw) as JsonValue;
             try { console.log(`[DDITreeCache] Loaded cached tree+elements from: ${cacheDir()}`); } catch {}
-            return { tree: parsed, elements } as DdiBundle;
+            return { tree: parsed, elements } as DDIBundle;
         } catch {
             // no elements file – return only tree for backward compatibility
         }
@@ -70,12 +70,12 @@ function loadFromCache(expectedSig: string): JsonValue | DdiBundle | null {
     }
 }
 
-function saveToCache(sig: string, payload: JsonValue | DdiBundle) {
+function saveToCache(sig: string, payload: JsonValue | DDIBundle) {
     try {
         fs.mkdirSync(cacheDir(), { recursive: true });
         if (isBundle(payload)) {
-            fs.writeFileSync(treePath(), JSON.stringify((payload as DdiBundle).tree), 'utf8');
-            fs.writeFileSync(elementsPath(), JSON.stringify((payload as DdiBundle).elements), 'utf8');
+            fs.writeFileSync(treePath(), JSON.stringify((payload as DDIBundle).tree), 'utf8');
+            fs.writeFileSync(elementsPath(), JSON.stringify((payload as DDIBundle).elements), 'utf8');
         } else {
             fs.writeFileSync(treePath(), JSON.stringify(payload as JsonValue), 'utf8');
             // Best-effort: if an old elements.json exists, leave it as-is
@@ -96,11 +96,11 @@ function saveToCache(sig: string, payload: JsonValue | DdiBundle) {
     }
 }
 
-function isBundle(v: unknown): v is DdiBundle {
+function isBundle(v: unknown): v is DDIBundle {
     return !!v && typeof v === 'object' && 'tree' in (v as any) && 'elements' in (v as any);
 }
 
-export async function getOrBuildDDITree(buildFn: () => Promise<JsonValue | DdiBundle>): Promise<JsonValue | DdiBundle> {
+export async function getOrBuildDDITree(buildFn: () => Promise<JsonValue | DDIBundle>): Promise<JsonValue | DDIBundle> {
     const sig = computeSignature();
     const cached = loadFromCache(sig);
     if (cached) return cached;

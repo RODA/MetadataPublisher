@@ -1,4 +1,8 @@
-keep_attributes <- function(x) {
+# Attach a dedicated helper environment to keep functions off .GlobalEnv
+if (!("metadataPublisher" %in% search())) attach(NULL, name = "metadataPublisher")
+env <- as.environment("metadataPublisher")
+
+env$keep_attributes <- function(x) {
     # if it's a list or atomic with attributes
     attrs <- attributes(x)
     if (!is.null(attrs)) {
@@ -34,7 +38,7 @@ keep_attributes <- function(x) {
 #     children = list(childNode, ...)?
 #   )
 
-normalize_element <- function(name, x) {
+env$normalize_element <- function(name, x) {
     # Extract and drop meta
     attrs <- NULL
     if (is.list(x)) {
@@ -70,7 +74,7 @@ normalize_element <- function(name, x) {
     node
 }
 
-normalize_children <- function(x) {
+env$normalize_children <- function(x) {
     if (!is.list(x)) return(list())
     keys <- names(x)
     # Remove meta keys
@@ -98,7 +102,7 @@ normalize_children <- function(x) {
     out
 }
 
-normalize_codebook <- function(cb) {
+env$normalize_codebook <- function(cb) {
     # cb is expected from keep_attributes(codeBook)
     cb <- keep_attributes(cb)
     attrs <- NULL
@@ -109,8 +113,8 @@ normalize_codebook <- function(cb) {
     node
 }
 
-make_DDI_tree <- function(root = "codeBook") {
-    DDIC <- get("DDIC", envir = DDIwR::getEnv())
+env$make_DDI_tree <- function(root = "codeBook") {
+        DDIC <- get("DDIC", envir = DDIwR::getEnv())
 
     if (!is.list(DDIC) || is.null(DDIC[[root]])) {
         admisc::stopError(sprintf("Root element '%s' not found in DDIC.", root))
@@ -148,5 +152,52 @@ make_DDI_tree <- function(root = "codeBook") {
     }
 
     # Return the node rooted at `root`
-    build_node(root, visited = character())
+        build_node(root, visited = character())
 }
+
+env$dataset_names <- character()
+
+env$import_dataset <- function(name = "current", path) {
+    data <- DDIwR::convert(path)
+    assign(name, data, envir = .GlobalEnv)
+    env$dataset_names <<- unique(c(env$dataset_names, name))
+    invisible(data)
+}
+
+env$list_datasets <- function() {
+    env$dataset_names
+}
+
+env$describe_variable <- function(dataset = "current", variable) {
+    if (!exists(dataset, envir = .GlobalEnv)) {
+        stop("Dataset not loaded: ", dataset)
+    }
+    data <- get(dataset, envir = .GlobalEnv)
+    if (!variable %in% names(data)) {
+        stop("Variable not found: ", variable)
+    }
+    value <- data[[variable]]
+    if (is.numeric(value)) {
+        return(list(
+            min = min(value, na.rm = TRUE),
+            max = max(value, na.rm = TRUE),
+            mean = mean(value, na.rm = TRUE),
+            sd = stats::sd(value, na.rm = TRUE),
+            n = sum(!is.na(value))
+        ))
+    }
+    if (is.factor(value) || is.character(value)) {
+        return(as.list(as.table(value)))
+    }
+    list(summary = capture.output(summary(value)))
+}
+
+env$ddi_tree_elements <- function() {
+    list(
+        tree = make_DDI_tree(),
+        elements = get("DDIC", envir = DDIwR::getEnv())
+    )
+}
+
+# Hide the helper reference symbol to avoid polluting the workspace
+rm(env)
