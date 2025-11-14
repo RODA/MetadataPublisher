@@ -464,7 +464,12 @@ function createMainWindow() {
                 mainWindow.webContents.send('i18nLanguageChanged', i18n.getLocale());
                 // Add a startup cover while booting to block interaction
                 if (booting) {
-                    try { mainWindow.webContents.send('addCover', i18n.t('messages.app.initializing')); } catch { /* noop */ }
+                    try {
+                        const bm = settings.get('backendMode');
+                        const useWebR = (bm === 'webr');
+                        const key = useWebR ? 'messages.app.initializing.webr' : 'messages.app.initializing';
+                        mainWindow.webContents.send('addCover', i18n.t(key));
+                    } catch { /* noop */ }
                 }
             } catch { /* noop */ }
         });
@@ -647,9 +652,15 @@ function buildMainMenuTemplate(): MenuItemConstructorOptions[] {
 
     const currentBackendMode = settings.get('backendMode');
     const setBackend = (mode: BackendMode) => {
-        settings.set('backendMode', mode)
+        try { settings.set('backendMode', mode); } catch { /* noop */ }
         const mainMenu = Menu.buildFromTemplate(buildMainMenuTemplate());
         Menu.setApplicationMenu(mainMenu);
+        if (mode === 'webr') {
+            try { mainWindow?.webContents.send('addCover', i18n.t('messages.app.initializing.webr')); } catch { /* noop */ }
+            ensureWebRInitialized()
+                .catch(() => { /* ignore; UI will surface on next action if needed */ })
+                .finally(() => { try { mainWindow?.webContents.send('removeCover'); } catch { /* noop */ } });
+        }
     };
 
     const backendSubmenu: MenuItemConstructorOptions[] = [
