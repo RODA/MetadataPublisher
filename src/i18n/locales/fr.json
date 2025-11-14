@@ -38,5 +38,10 @@
   "page.main.drop.body": "Faites glisser un fichier pris en charge ou utilisez Fichier > Charger ..., pour éditer ses métadonnées. Formats pris en charge :",
   "page.main.drop.formats": "XML, SPSS (.sav, .por), Stata (.dta), R (.rds), SAS (.sas7bdat), Excel (.xls, .xlsx).",
   "page.main.loader": "Chargement...",
-  "page.main.rendering": "Affichage des métadonnées..."
+  "page.main.rendering": "Affichage des métadonnées...",
+  "page.native.missing": "Les packages suivants sont absents de la version de R installée sur le système : {packages}.",
+  "messages.native.useWebR": "Continuer avec le R intégré à la place ?",
+  "messages.native.webr": "Oui",
+  "messages.native.cancel": "Annuler",
+  "messages.native.unknownPackages": "packages requis"
 }

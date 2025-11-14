@@ -29,6 +29,7 @@ const isSupportedCodebookFile = (filePath: string): boolean => {
 
 type BackendMode = 'native' | 'webr';
 const BACKEND_MODE_KEY = 'backendMode';
+type NativeInitResult = 'ready' | 'fallback' | 'blocked';
 
 function getBackendMode(): BackendMode {
     try {
@@ -60,6 +61,8 @@ let nativeRscriptPath: string | null = null;
 const nativeRLibraryDir = path.join(__dirname, '../src/library/R');
 const nativeCodebookScript = path.join(nativeRLibraryDir, 'load_codebook_native.R');
 const nativeDDITreeScript = path.join(nativeRLibraryDir, 'build_ddi_tree_native.R');
+const nativePackageCheckScript = path.join(nativeRLibraryDir, 'check_native_packages.R');
+let nativeRuntimeReady = false;
 let webRInitPromise: Promise<void> | null = null;
 let webRInitialized = false;
 
@@ -101,12 +104,14 @@ function runNativeRScript(scriptPath: string, args: string[]): Promise<string> {
         typedProc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
         typedProc.on('error', (error: Error) => reject(error));
         typedProc.on('close', (code: number) => {
+            const output = stdout.trim();
             if (code !== 0) {
                 const message = stderr.trim() || `Rscript exited with code ${code}`;
-                reject(new Error(message));
+                const error = new Error(message);
+                (error as any).stdout = output;
+                reject(error);
                 return;
             }
-            const output = stdout.trim();
             if (!output) {
                 reject(new Error('Native R script produced no output'));
                 return;
@@ -143,6 +148,57 @@ const writeDroppedFile = async (name: string, data: Buffer): Promise<string> => 
     return dropPath;
 };
 
+function parseMissingPackages(raw: string | undefined): string[] {
+    if (!raw) return [];
+    return raw
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+}
+
+async function promptNativePackageFallback(missing: string[], errorMessage?: string): Promise<boolean> {
+    const packages = missing.length ? missing.join(', ') : i18n.t('messages.native.unknownPackages');
+    const message = i18n.t('messages.native.missing', { packages });
+    const detailParts = [i18n.t('messages.native.useWebR')];
+    if (errorMessage) detailParts.push(errorMessage);
+    const result = await dialog.showMessageBox(mainWindow ?? undefined, {
+        type: 'warning',
+        buttons: [i18n.t('messages.native.webr'), i18n.t('messages.native.cancel')],
+        defaultId: 0,
+        cancelId: 1,
+        message,
+        detail: detailParts.join('\n\n'),
+        normalizeAccessKeys: true,
+    });
+    return result.response === 0;
+}
+
+async function ensureNativeRuntimeReady(): Promise<NativeInitResult> {
+    if (nativeRuntimeReady) return 'ready';
+    if (!nativeRscriptPath) return 'fallback';
+    try {
+        const raw = await runNativeRScript(nativePackageCheckScript, [nativeRLibraryDir]);
+        if (raw.trim().toLowerCase() === 'ok') {
+            nativeRuntimeReady = true;
+            return 'ready';
+        }
+        const missing = parseMissingPackages(raw);
+        return missing.length
+            ? (await promptNativePackageFallback(missing))
+                ? 'fallback'
+                : 'blocked'
+            : 'fallback';
+    } catch (error) {
+        const stdout = (error as any)?.stdout ?? '';
+        const missing = parseMissingPackages(stdout);
+        if (missing.length > 0) {
+            return (await promptNativePackageFallback(missing)) ? 'fallback' : 'blocked';
+        }
+        const fallback = await promptNativePackageFallback([], (error as Error)?.message);
+        return fallback ? 'fallback' : 'blocked';
+    }
+}
+
 // function to write the json to an external file for diagnostics
 const writeDiagnosticFile = async (label: string, text: string): Promise<string> => {
     await ensureDropDir();
@@ -171,25 +227,28 @@ async function loadCodebookFile(hostFilePath: string) {
     try {
         let codebook: JsonValue;
         const backendMode = getBackendMode();
-        const useNative = backendMode === 'native' && Boolean(nativeRscriptPath);
+        const nativeInitResult = backendMode === 'native' ? await ensureNativeRuntimeReady() : 'fallback';
+        if (nativeInitResult === 'blocked') return;
+        const useNative = backendMode === 'native' && nativeInitResult === 'ready' && Boolean(nativeRscriptPath);
         if (useNative) {
             try {
-                // console.log('[Main] loading codebook via native R', hostFilePath);
+                console.log('[Main] loading codebook via native R', hostFilePath);
                 codebook = await loadCodebookViaNativeR(hostFilePath);
-                // console.log('[Main] native codebook loaded, tree root', (codebook as any)?.name);
+                console.log('[Main] native codebook loaded, tree root', (codebook as any)?.name);
             } catch (error: any) {
-                // console.error('[Main] native codebook load failed, falling back to WebR', error);
+                console.error('[Main] native codebook load failed, falling back to WebR', error);
                 nativeRscriptPath = null;
+                nativeRuntimeReady = false;
                 await ensureWebRInitialized();
-                // console.log('[Main] loading codebook via WebR fallback', hostFilePath);
+                console.log('[Main] loading codebook via WebR fallback', hostFilePath);
                 codebook = await loadCodebookViaWebR(hostFilePath);
             }
         } else {
-            if (backendMode === 'native' && !nativeRscriptPath) {
-                // console.log('[Main] native backend requested but Rscript unavailable, using WebR instead', hostFilePath);
+            if (backendMode === 'native') {
+                console.log('[Main] native backend requested but unavailable, using WebR instead', hostFilePath);
             }
             await ensureWebRInitialized();
-            // console.log('[Main] loading codebook via WebR', hostFilePath);
+            console.log('[Main] loading codebook via WebR', hostFilePath);
             codebook = await loadCodebookViaWebR(hostFilePath);
         }
         loadedCodebook = codebook;
@@ -336,9 +395,11 @@ async function ensureWebRInitialized() {
 }
 
 async function initializeRBackend() {
-    // console.log('[Main] initializeRBackend: native available?', Boolean(nativeRscriptPath));
     const backendMode = getBackendMode();
-    if (backendMode === 'native' && nativeRscriptPath) {
+    const nativeInitResult = backendMode === 'native' ? await ensureNativeRuntimeReady() : 'fallback';
+    if (nativeInitResult === 'blocked') return;
+
+    if (nativeInitResult === 'ready' && nativeRscriptPath) {
         try {
             const bundle = (await getOrBuildDDITree(async () => {
                 const raw = await runNativeRScript(nativeDDITreeScript, [nativeRLibraryDir]);
@@ -347,20 +408,17 @@ async function initializeRBackend() {
             dditree = bundle.tree;
             ddielements = bundle.elements;
             broadcastDdiElements();
-            // console.log('[Main] native DDI bundle ready, tree root', (dditree as any)?.name);
             finalizeBoot();
             return;
         } catch (error) {
-            // console.error('[Main] native R initialization failed, falling back to WebR', error);
             nativeRscriptPath = null;
+            nativeRuntimeReady = false;
         }
     }
-    if (backendMode === 'webr') {
-        // console.log('[Main] using embedded WebR backend per user preference');
-    } else if (!nativeRscriptPath) {
-        // console.log('[Main] native R backend unavailable, falling back to WebR');
+
+    if (backendMode === 'native' && nativeInitResult === 'fallback') {
+        console.log('[Main] native R backend unavailable, falling back to WebR');
     }
-    // console.log('[Main] falling back to WebR initialization');
     await ensureWebRInitialized();
 }
 
