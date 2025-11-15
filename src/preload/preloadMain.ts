@@ -340,26 +340,28 @@ function initTree() {
 
   const dispatchFileLoad = async (files: FileList | null | undefined, event?: DragEvent) => {
     // console.log('[Drop] dispatchFileLoad called', files);
-    if (!files || files.length === 0) {
-      // try to infer from URI list if possible
-      const uriList = event?.dataTransfer?.getData('text/uri-list') || event?.dataTransfer?.getData('text/plain');
-      const fallbackPath = parseUriList(uriList);
-      // console.log('[Drop] fallback uriList', uriList, 'parsed', fallbackPath);
-      if (fallbackPath) {
-        coms.sendTo('main', 'loadFile', fallbackPath);
-        return;
-      }
+
+    // 1) Prefer a file:// URI from the drag payload (works even when File.path is missing)
+    const uriList = event?.dataTransfer?.getData('text/uri-list') || event?.dataTransfer?.getData('text/plain');
+    const uriPath = parseUriList(uriList);
+    // console.log('[Drop] uri-list payload', uriList, 'parsed path', uriPath);
+    if (uriPath) {
+      coms.sendTo('main', 'loadFile', uriPath);
       return;
+    }
+
+    // 2) Fall back to the File object's path if present
+    if (!files || files.length === 0) {
+      return; // nothing else usable
     }
     const file = files[0];
     const filePath = (file as File & { path?: string }).path;
-    // console.log('[Drop] file keys', Object.keys(file), 'has path', 'path' in file);
-    // console.log('[Drop] path descriptor', Object.getOwnPropertyDescriptor(file, 'path'));
-    // console.log('[Drop] file from drop', filePath);
     if (typeof filePath === 'string' && filePath) {
       coms.sendTo('main', 'loadFile', filePath);
       return;
     }
+
+    // 3) Final fallback: send the bytes to main to be written to a temp file
     await sendFileToMain(file);
   };
 

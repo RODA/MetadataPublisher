@@ -64,27 +64,6 @@ const windowid: { [key: string]: number } = {
     mainWindow: 1,
 };
 
-
-
-async function loadCodebookViaWebR(hostFilePath: string): Promise<JsonValue> {
-    const dirname = path.dirname(hostFilePath);
-    const filename = path.basename(hostFilePath);
-
-    // Mount the host directory so WebR can access the file
-    await mount({ what: dirname, where: '/hostfile' });
-
-    const rPath = `/hostfile/${filename}`;
-    await webR.evalRVoid(
-        `codeBook <- getCodebook("${utils.escapeForR(rPath)}")`
-    );
-
-    const response = await webR.evalRString(
-        'jsonlite::toJSON(normalize_codebook(codeBook), auto_unbox = TRUE)'
-    );
-
-    return JSON.parse(response) as JsonValue;
-}
-
 async function ensureDropDir() {
     try {
         await fs.promises.mkdir(DROP_TEMP_DIR, { recursive: true });
@@ -95,9 +74,9 @@ const sanitizeFilename = (name: string): string => name.replace(/[<>:"/\\|?*\u00
 
 const writeDroppedFile = async (name: string, data: Buffer): Promise<string> => {
     await ensureDropDir();
-    const timestamp = Date.now();
-    const cleanName = sanitizeFilename(name) || `dropped_${timestamp}`;
-    const dropPath = path.join(DROP_TEMP_DIR, `${timestamp}_${cleanName}`);
+    const cleanName = sanitizeFilename(name) || 'dropped-file';
+    const dropPath = path.join(DROP_TEMP_DIR, cleanName);
+    // Overwrite any previous temp file with the same name
     await fs.promises.writeFile(dropPath, data);
     return dropPath;
 };
@@ -184,9 +163,15 @@ async function loadCodebookFile(hostFilePath: string) {
         return;
     }
 
-    // Send message to renderer to start loader
+    // Send message to renderer to start loader (include filename)
     if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('addCover', i18n.t('page.main.loader'));
+        try {
+            const fname = path.basename(hostFilePath || '');
+            const msg = fname ? `${i18n.t('page.main.loader')} ${fname}` : i18n.t('page.main.loader');
+            mainWindow.webContents.send('addCover', msg);
+        } catch {
+            mainWindow.webContents.send('addCover', i18n.t('page.main.loader'));
+        }
     }
 
     try {
@@ -203,7 +188,7 @@ async function loadCodebookFile(hostFilePath: string) {
                 console.log('[Main] loading codebook via native R', hostFilePath);
 
                 await nativeRWorker.evalRVoid(
-                    `codeBook <- getCodebook("${utils.escapeForR(hostFilePath)}")`
+                    `codeBook <- getCodebook("${utils.escapeForR(hostFilePath)}", ignore = "dataDscr", dataset = TRUE)`
                 );
 
                 const response = await nativeRWorker.evalRString(
@@ -232,15 +217,18 @@ async function loadCodebookFile(hostFilePath: string) {
 
                 await mount({ what: dirname, where: '/hostfile' });
                 const rPath = `/hostfile/${filename}`;
+
                 await webR.evalRVoid(
-                    `codeBook <- getCodebook("${utils.escapeForR(rPath)}")`
+                    `codeBook <- getCodebook("${utils.escapeForR(rPath)}", ignore = "dataDscr", dataset = TRUE)`
                 );
+
                 const responseWB = await webR.evalRString(
                     'jsonlite::toJSON(normalize_codebook(codeBook), auto_unbox = TRUE)'
                 );
+
                 loadedCodebook = JSON.parse(responseWB) as JsonValue;
             }
-        } else {
+        } else { // using WebR
             if (backendMode === 'native') {
                 console.log('[Main] native backend requested but unavailable, using WebR instead', hostFilePath);
                 if (mainWindow && !mainWindow.isDestroyed()) {
@@ -254,12 +242,14 @@ async function loadCodebookFile(hostFilePath: string) {
             const dirname = path.dirname(hostFilePath);
             const filename = path.basename(hostFilePath);
 
+            console.log('[Main] mounting host directory', dirname);
+
             // Mount the host directory so WebR can access the file
             await mount({ what: dirname, where: '/hostfile' });
 
             const rPath = `/hostfile/${filename}`;
             await webR.evalRVoid(
-                `codeBook <- getCodebook("${utils.escapeForR(rPath)}")`
+                `codeBook <- getCodebook("${utils.escapeForR(rPath)}", ignore = "dataDscr", dataset = TRUE)`
             );
 
             const response = await webR.evalRString(
@@ -546,8 +536,21 @@ function setupIPC() {
         });
         ipcMain.handle('load-dropped-file', async (_event, name: string, data: Buffer) => {
             const payload = Buffer.isBuffer(data) ? data : Buffer.from(data);
+            // Show loader with filename
+            try {
+                const cleanName = sanitizeFilename(name) || 'dropped-file';
+                console.log("[Main] handling dropped file", cleanName);
+                const msg = `${i18n.t('page.main.loader')} ${cleanName}`;
+                mainWindow?.webContents.send('addCover', msg);
+            } catch { /* noop */ }
             const filePath = await writeDroppedFile(name, payload);
-            await loadCodebookFile(filePath);
+            try {
+                await loadCodebookFile(filePath);
+            } finally {
+                // Cleanup temp file immediately after reading
+                try { await fs.promises.unlink(filePath); } catch { /* noop */ }
+                try { mainWindow?.webContents.send('removeCover'); } catch { /* noop */ }
+            }
             return filePath;
         });
     } catch { /* noop: handler may already be registered in some hot-reload flows */ }
